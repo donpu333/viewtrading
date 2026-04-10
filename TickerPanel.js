@@ -2031,48 +2031,48 @@ async fetchBybitSpotPrices(symbols) {
     }
 
     getFilteredTickers() {
-        const cacheKey = `${this.state.marketFilter}:${this.state.exchangeFilter}:${this.state.activeTab}:${this.state.activeFlagTab}`;
-        
-        if (this.filterCache && this.filterCache.key === cacheKey) {
-            return this.filterCache.result;
-        }
-        
-        let filtered = [...this.tickers];
-        
-        if (this.state.marketFilter !== 'all') {
-            filtered = filtered.filter(t => t.marketType === this.state.marketFilter);
-        }
-        if (this.state.exchangeFilter !== 'all') {
-            filtered = filtered.filter(t => t.exchange === this.state.exchangeFilter);
-        }
-        
-        if (this.state.activeTab === 'favorites') {
-            filtered = filtered.filter(t => this.state.favorites.includes(t.symbol));
-        } 
-        else if (this.state.activeTab === 'flags') {
-            if (this.state.activeFlagTab) {
-                filtered = filtered.filter(t => {
-                    const key = `${t.symbol}:${t.exchange}:${t.marketType}`;
-                    return this.state.flags[key] === this.state.activeFlagTab;
-                });
-            } else {
-                filtered = filtered.filter(t => {
-                    const key = `${t.symbol}:${t.exchange}:${t.marketType}`;
-                    return this.state.flags[key] !== undefined;
-                });
-            }
-        }
-        
-        const result = this.sortTickers(filtered);
-        
-        this.filterCache = {
-            key: cacheKey,
-            result: result
-        };
-        
-        return result;
+    // ✅ ВКЛЮЧАЕМ sortBy и sortDirection В КЛЮЧ КЭША
+    const cacheKey = `${this.state.marketFilter}:${this.state.exchangeFilter}:${this.state.activeTab}:${this.state.activeFlagTab}:${this.state.sortBy}:${this.state.sortDirection}`;
+    
+    if (this.filterCache && this.filterCache.key === cacheKey) {
+        return this.filterCache.result;
     }
-
+    
+    let filtered = [...this.tickers];
+    
+    if (this.state.marketFilter !== 'all') {
+        filtered = filtered.filter(t => t.marketType === this.state.marketFilter);
+    }
+    if (this.state.exchangeFilter !== 'all') {
+        filtered = filtered.filter(t => t.exchange === this.state.exchangeFilter);
+    }
+    
+    if (this.state.activeTab === 'favorites') {
+        filtered = filtered.filter(t => this.state.favorites.includes(t.symbol));
+    } 
+    else if (this.state.activeTab === 'flags') {
+        if (this.state.activeFlagTab) {
+            filtered = filtered.filter(t => {
+                const key = `${t.symbol}:${t.exchange}:${t.marketType}`;
+                return this.state.flags[key] === this.state.activeFlagTab;
+            });
+        } else {
+            filtered = filtered.filter(t => {
+                const key = `${t.symbol}:${t.exchange}:${t.marketType}`;
+                return this.state.flags[key] !== undefined;
+            });
+        }
+    }
+    
+    const result = this.sortTickers(filtered);
+    
+    this.filterCache = {
+        key: cacheKey,
+        result: result
+    };
+    
+    return result;
+}
     renderTickerList() {
         const flagTabs = document.getElementById('flagTabs');
         if (flagTabs) {
@@ -2313,32 +2313,50 @@ formatVolume(volume) {
         }
     }, 30000); // Раз в 30 секунд
 }
-    setupHeaderSorting() {
+  setupHeaderSorting() {
+    // 1. Удаляем старые обработчики, чтобы не было дублирования (если init вызывается несколько раз)
+    if (this._sortClickHandler) {
         document.querySelectorAll('.table-header span[data-sort]').forEach(header => {
-            header.addEventListener('click', () => {
-                const sortBy = header.dataset.sort;
-                if (this.state.sortBy === sortBy) {
-                    this.state.sortDirection = this.state.sortDirection === 'asc' ? 'desc' : 'asc';
-                } else { 
-                    this.state.sortBy = sortBy; 
-                    this.state.sortDirection = 'desc'; 
-                }
-                
-                document.querySelectorAll('.table-header span[data-sort]').forEach(s => s.classList.remove('active-sort'));
-                header.classList.add('active-sort');
-                
-                document.querySelectorAll('.table-header span[data-sort] i').forEach(icon => icon.className = 'fas fa-sort');
-                
-                const icon = header.querySelector('i');
-                if (icon) {
-                    icon.className = this.state.sortDirection === 'asc' ? 'fas fa-sort-up' : 'fas fa-sort-down';
-                }
-                
-                this.filterCache = null;
-                this.renderTickerList();
-            });
+            header.removeEventListener('click', this._sortClickHandler);
         });
     }
+    
+    // 2. Создаём новый обработчик
+    this._sortClickHandler = (e) => {
+        e.stopPropagation(); // чтобы клик не уходил на контейнер и не мешал другим обработчикам
+        
+        const header = e.currentTarget;
+        const sortBy = header.dataset.sort;
+        
+        // Меняем направление, если кликнули по тому же полю
+        if (this.state.sortBy === sortBy) {
+            this.state.sortDirection = this.state.sortDirection === 'asc' ? 'desc' : 'asc';
+        } else {
+            this.state.sortBy = sortBy;
+            this.state.sortDirection = 'desc'; // по умолчанию сортируем по убыванию
+        }
+        
+        // Обновляем иконки во всех заголовках
+        document.querySelectorAll('.table-header span[data-sort] i').forEach(icon => {
+            icon.className = 'fas fa-sort';
+        });
+        
+        // Устанавливаем активную иконку на текущем заголовке
+        const icon = header.querySelector('i');
+        if (icon) {
+            icon.className = this.state.sortDirection === 'asc' ? 'fas fa-sort-up' : 'fas fa-sort-down';
+        }
+        
+        // Сбрасываем кэш и перерисовываем список
+        this.filterCache = null;
+        this.renderTickerList();
+    };
+    
+    // 3. Навешиваем обработчик на все заголовки
+    document.querySelectorAll('.table-header span[data-sort]').forEach(header => {
+        header.addEventListener('click', this._sortClickHandler);
+    });
+}
 
  addSymbol(symbol, isCustom = true, exchange = 'binance', marketType = 'futures', render = true, skipInitialFetch = false) {
     if (!symbol) return false;
