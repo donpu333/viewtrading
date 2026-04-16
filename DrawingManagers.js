@@ -1385,7 +1385,6 @@ async loadRays() {
 } 
  
  // ========== ТРЕНДОВАЯ ЛИНИЯ (ПОЛНОСТЬЮ ИСПРАВЛЕННАЯ) ==========
-
 class TrendLine {
     constructor(point1, point2, options = {}) {
         this.id = `trend_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -2595,6 +2594,7 @@ async loadTrendLines() {
         // Ничего не делаем – updateAllViews сам всё обновит
     }
 }
+
 
               
 // ========== ЛИНЕЙКА-ИЗМЕРИТЕЛЬ (ИСПРАВЛЕННАЯ - НЕ ПРОПАДАЕТ ПРИ СМЕНЕ ТАЙМФРЕЙМА) ==========
