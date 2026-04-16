@@ -159,18 +159,28 @@ class TickerPanel {
         document.addEventListener('visibilitychange', this.handleVisibilityChange);
     }
     
-    async init() {
-        await this.loadUserData();
-        this.setupFilters();
-        this.setupModal();
-        this.setupFlagContextMenu();
-        this.setupUIEventListeners();
-        this.setupClearAllButton();
-        this.setupHeaderSorting();
-        this.initializeDataParallel();
-        this.startFallbackPriceUpdates();
-        this.startCacheCleanup();
-    }
+   async init() {
+    console.log('📋 TickerPanel: быстрая инициализация');
+
+    // ЛЁГКИЕ ОПЕРАЦИИ – выполняются мгновенно
+    this.setupFilters();            // создание кнопок фильтров
+    this.setupFlagContextMenu();    // контекстное меню
+    this.setupUIEventListeners();   // клики, удаление
+    this.setupClearAllButton();     // кнопка очистки
+    this.setupHeaderSorting();      // сортировка по клику на заголовки
+    this.setupModal();              // модальное окно (пустое)
+
+    // ТЯЖЁЛЫЕ ОПЕРАЦИИ – откладываем, чтобы график успел отрисоваться
+    setTimeout(async () => {
+        await this.loadUserData();          // IndexedDB
+        this.initializeDataParallel();      // загрузка списков, снапшотов
+        this.startFallbackPriceUpdates();   // фоновое обновление цен
+        this.startCacheCleanup();           // очистка кэша
+        // Если модальное окно зависит от загруженных данных – обновить
+        this.updateModalWithData?.();
+        console.log('✅ TickerPanel полностью загружен (фон)');
+    }, 100); // задержка 100 мс даёт графику фору
+}
     
     // ========== МЕТОДЫ ЗАГРУЗКИ ДАННЫХ (были в TickerDataLoader) ==========
     
