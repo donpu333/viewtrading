@@ -1755,4 +1755,4 @@ applyPriceFormat(precision) {
 }
 if (typeof window !== 'undefined') {
     window.ChartManager = ChartManager;
-} 
+}
