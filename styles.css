@@ -3310,6 +3310,8 @@ html, body {
 #flagTabs.show {
     display: flex !important;
 }
+
+
 /* Стили для кнопки прицела */
 .modal-target-btn {
     color: #b8b8b8 !important;  /* серый цвет */
@@ -3593,3 +3595,17 @@ html, body {
     background: #2a2e39;
     color: #fff;
 }
+/* Фиолетовый */
+.ticker-panel .flag-purple::after { background: linear-gradient(145deg, #9c27b0, #7b1fa2); }
+.context-menu-item .flag-purple::after { background: linear-gradient(145deg, #9c27b0, #7b1fa2); }
+.flag-purple-small::after { background: linear-gradient(145deg, #9c27b0, #7b1fa2); }
+
+/* Бирюзовый */
+.ticker-panel .flag-cyan::after { background: linear-gradient(145deg, #00bcd4, #0097a7); }
+.context-menu-item .flag-cyan::after { background: linear-gradient(145deg, #00bcd4, #0097a7); }
+.flag-cyan-small::after { background: linear-gradient(145deg, #00bcd4, #0097a7); }
+
+/* Лайм - САМЫЙ ЯРКИЙ (неоновый) */
+.ticker-panel .flag-lime::after { background: linear-gradient(145deg, #39ff14, #2ecc00); }
+.context-menu-item .flag-lime::after { background: linear-gradient(145deg, #39ff14, #2ecc00); }
+.flag-lime-small::after { background: linear-gradient(145deg, #39ff14, #2ecc00); }
