@@ -23,6 +23,7 @@ class TimerRenderer {
             const padding = 8 * scope.horizontalPixelRatio;
             const rectWidth = textWidth + padding * 2;
             const rectHeight = (fontSize + 8) * scope.verticalPixelRatio;
+            const rectX = scope.mediaSize.width - rectWidth - 5 * scope.horizontalPixelRatio;
             
             let price = chartManager.currentRealPrice;
             if (!price || isNaN(price) || price <= 0) {
@@ -33,10 +34,6 @@ class TimerRenderer {
             const activeSeries = chartManager.currentChartType === 'candle' 
                 ? chartManager.candleSeries 
                 : chartManager.barSeries;
-            
-            // 👇 Ширина шкалы цены вместо всей ширины графика
-            const priceScaleWidth = activeSeries.priceScale().width();
-            const rectX = priceScaleWidth - rectWidth - 5 * scope.horizontalPixelRatio;
             
             const yCoord = activeSeries.priceToCoordinate(price);
             
@@ -273,4 +270,4 @@ class TimerManager {
 
 if (typeof window !== 'undefined') {
     window.TimerManager = TimerManager;
-}
+} 
