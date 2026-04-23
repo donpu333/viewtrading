@@ -7,68 +7,83 @@ class TimerRenderer {
     }
 
     draw(target) {
-    if (!this.enabled) return;
-    
-    target.useBitmapCoordinateSpace(scope => {
-        const ctx = scope.context;
-        const chartManager = this._timerManager._chartManager;
-        if (!chartManager) return;
+        if (!this.enabled) return;
         
-        const timerText = this._timerManager._timerElement?.textContent || '';
-        if (!timerText) return;
-        
-        const fontSize = 11;
-        ctx.font = `bold ${fontSize}px 'Inter', Arial, sans-serif`;
-        const textWidth = ctx.measureText(timerText).width;
-        const padding = 8 * scope.horizontalPixelRatio;
-        const rectWidth = textWidth + padding * 2;
-        const rectHeight = (fontSize + 8) * scope.verticalPixelRatio;
-        
-        let price = chartManager.currentRealPrice;
-        if (!price || isNaN(price) || price <= 0) {
+        target.useBitmapCoordinateSpace(scope => {
+            const ctx = scope.context;
+            const chartManager = this._timerManager._chartManager;
+            if (!chartManager) return;
+            
+            const timerText = this._timerManager._timerElement?.textContent || '';
+            if (!timerText) return;
+            
+            const fontSize = 11;
+            ctx.font = `bold ${fontSize}px 'Inter', Arial, sans-serif`;
+            const textWidth = ctx.measureText(timerText).width;
+            const padding = 8 * scope.horizontalPixelRatio;
+            const rectWidth = textWidth + padding * 2;
+            const rectHeight = (fontSize + 8) * scope.verticalPixelRatio;
+            
+            let price = chartManager.currentRealPrice;
+            if (!price || isNaN(price) || price <= 0) {
+                const lastCandle = chartManager.getLastCandle();
+                price = lastCandle ? lastCandle.close : 0;
+            }
+            
+            const activeSeries = chartManager.currentChartType === 'candle' 
+                ? chartManager.candleSeries 
+                : chartManager.barSeries;
+            
+            // 👇 Ширина шкалы цены вместо всей ширины графика
+            const priceScaleWidth = activeSeries.priceScale().width();
+            const rectX = priceScaleWidth - rectWidth - 5 * scope.horizontalPixelRatio;
+            
+            const yCoord = activeSeries.priceToCoordinate(price);
+            
+            let rectY;
+            if (yCoord !== null) {
+                rectY = yCoord - rectHeight / 2;
+            } else {
+                rectY = scope.mediaSize.height - rectHeight - 10 * scope.verticalPixelRatio;
+            }
+            
             const lastCandle = chartManager.getLastCandle();
-            price = lastCandle ? lastCandle.close : 0;
-        }
-        
-        const activeSeries = chartManager.currentChartType === 'candle' 
-            ? chartManager.candleSeries 
-            : chartManager.barSeries;
-        
-        // 👇 ИСПРАВЛЕНО: используем ширину шкалы вместо ширины всего графика
-        const priceScaleWidth = activeSeries.priceScale().width();
-        const rectX = priceScaleWidth - rectWidth - 5 * scope.horizontalPixelRatio;
-        
-        const yCoord = activeSeries.priceToCoordinate(price);
-        
-        let rectY;
-        if (yCoord !== null) {
-            rectY = yCoord - rectHeight / 2;
-        } else {
-            rectY = scope.mediaSize.height - rectHeight - 10 * scope.verticalPixelRatio;
-        }
-        
-        const lastCandle = chartManager.getLastCandle();
-        const isBullish = lastCandle ? lastCandle.close >= lastCandle.open : true;
-        const bullishColor = chartManager.bullishColor || '#00bcd4';
-        const bearishColor = chartManager.bearishColor || '#f23645';
-        const bgColor = isBullish ? bullishColor : bearishColor;
-        
-        ctx.save();
-        ctx.fillStyle = bgColor;
-        ctx.shadowColor = 'rgba(0,0,0,0.5)';
-        ctx.shadowBlur = 4 * scope.horizontalPixelRatio;
-        ctx.beginPath();
-        this._roundRect(ctx, rectX, rectY, rectWidth, rectHeight, 4 * scope.horizontalPixelRatio);
-        ctx.fill();
-        
-        ctx.shadowBlur = 0;
-        ctx.fillStyle = '#FFFFFF';
-        ctx.font = `bold ${fontSize}px 'Inter', Arial, sans-serif`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(timerText, rectX + rectWidth / 2, rectY + rectHeight / 2);
-        ctx.restore();
-    });
+            const isBullish = lastCandle ? lastCandle.close >= lastCandle.open : true;
+            const bullishColor = chartManager.bullishColor || '#00bcd4';
+            const bearishColor = chartManager.bearishColor || '#f23645';
+            const bgColor = isBullish ? bullishColor : bearishColor;
+            
+            ctx.save();
+            ctx.fillStyle = bgColor;
+            ctx.shadowColor = 'rgba(0,0,0,0.5)';
+            ctx.shadowBlur = 4 * scope.horizontalPixelRatio;
+            ctx.beginPath();
+            this._roundRect(ctx, rectX, rectY, rectWidth, rectHeight, 4 * scope.horizontalPixelRatio);
+            ctx.fill();
+            
+            ctx.shadowBlur = 0;
+            ctx.fillStyle = '#FFFFFF';
+            ctx.font = `bold ${fontSize}px 'Inter', Arial, sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(timerText, rectX + rectWidth / 2, rectY + rectHeight / 2);
+            ctx.restore();
+        });
+    }
+    
+    _roundRect(ctx, x, y, w, h, r) {
+        if (w < 2 * r) r = w / 2;
+        if (h < 2 * r) r = h / 2;
+        ctx.moveTo(x + r, y);
+        ctx.lineTo(x + w - r, y);
+        ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+        ctx.lineTo(x + w, y + h - r);
+        ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+        ctx.lineTo(x + r, y + h);
+        ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+        ctx.lineTo(x, y + r);
+        ctx.quadraticCurveTo(x, y, x + r, y);
+    }
 }
 
 class TimerPaneView {
