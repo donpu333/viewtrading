@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Яркая свеча вверх -->
+  <rect x="14" y="16" width="14" height="18" rx="2" fill="#00bcd4"/>
+  <line x1="21" y1="8" x2="21" y2="50" stroke="#00bcd4" stroke-width="4" stroke-linecap="round"/>
+  
+  <!-- Яркая свеча вниз -->
+  <rect x="36" y="22" width="14" height="12" rx="2" fill="#f23645"/>
+  <line x1="43" y1="4" x2="43" y2="56" stroke="#f23645" stroke-width="4" stroke-linecap="round"/>
+</svg>
