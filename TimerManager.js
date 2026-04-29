@@ -38,8 +38,7 @@ class TimerRenderer {
             const rectWidth = textWidth + paddingH * 2;
             const rectHeight = (fontSize + paddingV * 2) * scope.verticalPixelRatio;
             
-        console.log('🔴 draw:', 'price=', lastCandle?.close, 'yCoord=', yCoord, 'width=', scope.mediaSize.width);
-      const rectX = scope.mediaSize.width - rectWidth - 4 * scope.horizontalPixelRatio;
+       const rectX = scope.mediaSize.width - rectWidth;
             
             const rectY = yCoord - rectHeight / 2;
             const minY = 0;
