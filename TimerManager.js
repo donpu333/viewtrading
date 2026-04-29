@@ -4,9 +4,6 @@ class TimerRenderer {
     constructor(timerManager) {
         this._timerManager = timerManager;
         this.enabled = true;
-        this._lastValidY = null;  // Кешируем последнюю валидную позицию
-        this._initAttempts = 0;
-        this._maxInitAttempts = 50;
     }
 
     draw(target) {
@@ -28,7 +25,6 @@ class TimerRenderer {
             const rectHeight = (fontSize + 8) * scope.verticalPixelRatio;
             const rectX = scope.mediaSize.width - rectWidth - 5 * scope.horizontalPixelRatio;
             
-            // Получаем цену (как в оригинале)
             let price = chartManager.currentRealPrice;
             if (!price || isNaN(price) || price <= 0) {
                 const lastCandle = chartManager.getLastCandle();
@@ -39,61 +35,31 @@ class TimerRenderer {
                 ? chartManager.candleSeries 
                 : chartManager.barSeries;
             
-            // ОРИГИНАЛЬНАЯ логика, но с защитой
-            let yCoord = null;
-            
-            if (activeSeries && price > 0) {
-                yCoord = activeSeries.priceToCoordinate(price);
-            }
-            
-            // ЕСЛИ НЕ СРАБОТАЛО — ИСПОЛЬЗУЕМ КЕШ
-            if (yCoord === null || yCoord === undefined || yCoord < 0) {
-                if (this._lastValidY !== null) {
-                    yCoord = this._lastValidY;
-                } else {
-                    // Пытаемся через последнюю свечу
-                    const lastCandle = chartManager.getLastCandle();
-                    if (lastCandle && activeSeries) {
-                        yCoord = activeSeries.priceToCoordinate(lastCandle.close);
-                    }
-                }
-            } else {
-                // Сохраняем валидную координату
-                this._lastValidY = yCoord;
-                this._initAttempts = 0;
-            }
-            
-            // СЧИТАЕМ ПОПЫТКИ инициализации
-            if (yCoord === null || yCoord === undefined || yCoord < 0) {
-                this._initAttempts++;
-                
-                // Если слишком много попыток — форсируем отображение
-                if (this._initAttempts > this._maxInitAttempts) {
-                    const lastCandle = chartManager.getLastCandle();
-                    if (lastCandle && activeSeries) {
-                        yCoord = activeSeries.priceToCoordinate(lastCandle.close);
-                        if (yCoord !== null && yCoord !== undefined) {
-                            this._lastValidY = yCoord;
-                        }
-                    }
-                }
-            }
-            
-            // ФИНАЛЬНЫЙ ФОЛБЭК — только если вообще ничего не работает
-            let rectY;
-            if (yCoord !== null && yCoord !== undefined && yCoord > 0) {
-                rectY = yCoord - rectHeight / 2;
-            } else {
-                // Используем процент от высоты как в оригинале
-                // Но берем 50% — это будет похоже на центр, 
-                // пока не появятся реальные данные
-                rectY = scope.mediaSize.height * 0.3;
-            }
-            
-            // НЕ ДАЕМ ВЫЙТИ ЗА ГРАНИЦЫ (опционально)
-            const minY = rectHeight / 2;
-            const maxY = scope.mediaSize.height - rectHeight / 2;
-            rectY = Math.max(minY, Math.min(maxY, rectY));
+          let yCoord = activeSeries.priceToCoordinate(price);
+
+// СТАЛО (правильно):
+if (yCoord === null) {
+    // priceScale больше не имеет метода priceToCoordinate
+    // Просто используем цену последней свечи
+    const lastCandle = chartManager.getLastCandle();
+    if (lastCandle) {
+        yCoord = activeSeries.priceToCoordinate(lastCandle.close);
+    }
+}
+
+let rectY;
+if (yCoord !== null && yCoord > 0) {
+    rectY = yCoord - rectHeight / 2;
+} else {
+    // Если совсем не получилось — прижимаем к последней свече
+    const lastCandle = chartManager.getLastCandle();
+    if (lastCandle) {
+        yCoord = activeSeries.priceToCoordinate(lastCandle.close);
+        rectY = yCoord !== null ? yCoord - rectHeight / 2 : 50;
+    } else {
+        rectY = 50;
+    }
+}
             
             const lastCandle = chartManager.getLastCandle();
             const isBullish = lastCandle ? lastCandle.close >= lastCandle.open : true;
@@ -119,41 +85,6 @@ class TimerRenderer {
         });
     }
     
-    _roundRect(ctx, x, y, w, h, r) {
-        if (w < 2 * r) r = w / 2;
-        if (h < 2 * r) r = h / 2;
-        ctx.moveTo(x + r, y);
-        ctx.lineTo(x + w - r, y);
-        ctx.quadraticCurveTo(x + w, y, x + w, y + r);
-        ctx.lineTo(x + w, y + h - r);
-        ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-        ctx.lineTo(x + r, y + h);
-        ctx.quadraticCurveTo(x, y + h, x, y + h - r);
-        ctx.lineTo(x, y + r);
-        ctx.quadraticCurveTo(x, y, x + r, y);
-    }
-}
-    // В TimerManager добавьте проверку готовности данных
-start(interval) {
-    this._currentTf = interval;
-    
-    if (this._isDayTimeframe(interval)) {
-        this._timerElement.textContent = '';
-        if (this._primitive) this._primitive.setEnabled(false);
-        this.stop();
-        return;
-    }
-    
-    // Сбрасываем кеш при смене ТФ
-    if (this._primitive && this._primitive._paneView && this._primitive._paneView._renderer) {
-        this._primitive._paneView._renderer._lastValidY = null;
-        this._primitive._paneView._renderer._initAttempts = 0;
-    }
-    
-    this._updateTimer();
-    this.stop();
-    this._interval = setInterval(() => this._updateTimer(), 250);
-}
     _roundRect(ctx, x, y, w, h, r) {
         if (w < 2 * r) r = w / 2;
         if (h < 2 * r) r = h / 2;
@@ -365,4 +296,4 @@ class TimerManager {
 
 if (typeof window !== 'undefined') {
     window.TimerManager = TimerManager;
-} 
+}  почему на мак буке таймер находится по середине  графика
