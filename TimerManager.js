@@ -4,105 +4,135 @@ class TimerRenderer {
     constructor(timerManager) {
         this._timerManager = timerManager;
         this.enabled = true;
+        this._lastValidY = null;  // Кешируем последнюю валидную позицию
+        this._initAttempts = 0;
+        this._maxInitAttempts = 50;
     }
 
-   draw(target) {
-    if (!this.enabled) return;
-    
-    target.useBitmapCoordinateSpace(scope => {
-        const ctx = scope.context;
-        const chartManager = this._timerManager._chartManager;
-        if (!chartManager) return;
+    draw(target) {
+        if (!this.enabled) return;
         
-        const timerText = this._timerManager._timerElement?.textContent || '';
-        if (!timerText) return;
-        
-        const fontSize = 11;
-        ctx.font = `bold ${fontSize}px 'Inter', Arial, sans-serif`;
-        const textWidth = ctx.measureText(timerText).width;
-        const padding = 8 * scope.horizontalPixelRatio;
-        const rectWidth = textWidth + padding * 2;
-        const rectHeight = (fontSize + 8) * scope.verticalPixelRatio;
-        const rectX = scope.mediaSize.width - rectWidth - 5 * scope.horizontalPixelRatio;
-        
-        // Получаем текущую цену
-        let price = chartManager.currentRealPrice;
-        if (!price || isNaN(price) || price <= 0) {
-            const lastCandle = chartManager.getLastCandle();
-            price = lastCandle ? lastCandle.close : 0;
-        }
-        
-        const activeSeries = chartManager.currentChartType === 'candle' 
-            ? chartManager.candleSeries 
-            : chartManager.barSeries;
-        
-        // ИСПРАВЛЕНО: Правильный расчет Y координаты
-        let yCoord = null;
-        
-        // Пробуем получить координату через активную серию
-        if (activeSeries && price > 0) {
-            yCoord = activeSeries.priceToCoordinate(price);
-        }
-        
-        // Если не получилось - используем последнюю свечу
-        if (yCoord === null || yCoord === undefined || yCoord < 0) {
-            const lastCandle = chartManager.getLastCandle();
-            if (lastCandle && lastCandle.close > 0 && activeSeries) {
-                yCoord = activeSeries.priceToCoordinate(lastCandle.close);
+        target.useBitmapCoordinateSpace(scope => {
+            const ctx = scope.context;
+            const chartManager = this._timerManager._chartManager;
+            if (!chartManager) return;
+            
+            const timerText = this._timerManager._timerElement?.textContent || '';
+            if (!timerText) return;
+            
+            const fontSize = 11;
+            ctx.font = `bold ${fontSize}px 'Inter', Arial, sans-serif`;
+            const textWidth = ctx.measureText(timerText).width;
+            const padding = 8 * scope.horizontalPixelRatio;
+            const rectWidth = textWidth + padding * 2;
+            const rectHeight = (fontSize + 8) * scope.verticalPixelRatio;
+            const rectX = scope.mediaSize.width - rectWidth - 5 * scope.horizontalPixelRatio;
+            
+            // Получаем цену (как в оригинале)
+            let price = chartManager.currentRealPrice;
+            if (!price || isNaN(price) || price <= 0) {
+                const lastCandle = chartManager.getLastCandle();
+                price = lastCandle ? lastCandle.close : 0;
             }
-        }
-        
-        // Фолбэк: используем середину видимой области
-        if (yCoord === null || yCoord === undefined || yCoord < 0) {
-            // Получаем видимый диапазон цен
-            const timeScale = chartManager.chart?.timeScale();
-            if (timeScale) {
-                const visibleRange = timeScale.getVisibleLogicalRange();
-                if (visibleRange) {
-                    // Используем середину графика по вертикали
-                    yCoord = scope.mediaSize.height * 0.3; // 30% от верха
+            
+            const activeSeries = chartManager.currentChartType === 'candle' 
+                ? chartManager.candleSeries 
+                : chartManager.barSeries;
+            
+            // ОРИГИНАЛЬНАЯ логика, но с защитой
+            let yCoord = null;
+            
+            if (activeSeries && price > 0) {
+                yCoord = activeSeries.priceToCoordinate(price);
+            }
+            
+            // ЕСЛИ НЕ СРАБОТАЛО — ИСПОЛЬЗУЕМ КЕШ
+            if (yCoord === null || yCoord === undefined || yCoord < 0) {
+                if (this._lastValidY !== null) {
+                    yCoord = this._lastValidY;
+                } else {
+                    // Пытаемся через последнюю свечу
+                    const lastCandle = chartManager.getLastCandle();
+                    if (lastCandle && activeSeries) {
+                        yCoord = activeSeries.priceToCoordinate(lastCandle.close);
+                    }
+                }
+            } else {
+                // Сохраняем валидную координату
+                this._lastValidY = yCoord;
+                this._initAttempts = 0;
+            }
+            
+            // СЧИТАЕМ ПОПЫТКИ инициализации
+            if (yCoord === null || yCoord === undefined || yCoord < 0) {
+                this._initAttempts++;
+                
+                // Если слишком много попыток — форсируем отображение
+                if (this._initAttempts > this._maxInitAttempts) {
+                    const lastCandle = chartManager.getLastCandle();
+                    if (lastCandle && activeSeries) {
+                        yCoord = activeSeries.priceToCoordinate(lastCandle.close);
+                        if (yCoord !== null && yCoord !== undefined) {
+                            this._lastValidY = yCoord;
+                        }
+                    }
                 }
             }
-        }
-        
-        // Финальный фолбэк
-        if (yCoord === null || yCoord === undefined || yCoord < 0) {
-            yCoord = scope.mediaSize.height * 0.3;
-        }
-        
-        // Ограничиваем Y, чтобы не выходить за пределы
-        const minY = rectHeight;
-        const maxY = scope.mediaSize.height - rectHeight;
-        const rectY = Math.max(minY, Math.min(maxY, yCoord - rectHeight / 2));
-        
-        const lastCandle = chartManager.getLastCandle();
-        const isBullish = lastCandle ? lastCandle.close >= lastCandle.open : true;
-        const bullishColor = chartManager.bullishColor || '#00bcd4';
-        const bearishColor = chartManager.bearishColor || '#f23645';
-        const bgColor = isBullish ? bullishColor : bearishColor;
-        
-        ctx.save();
-        
-        // Рисуем фон с тенью
-        ctx.fillStyle = bgColor;
-        ctx.shadowColor = 'rgba(0,0,0,0.5)';
-        ctx.shadowBlur = 4 * scope.horizontalPixelRatio;
-        ctx.beginPath();
-        this._roundRect(ctx, rectX, rectY, rectWidth, rectHeight, 4 * scope.horizontalPixelRatio);
-        ctx.fill();
-        
-        // Рисуем текст
-        ctx.shadowBlur = 0;
-        ctx.fillStyle = '#FFFFFF';
-        ctx.font = `bold ${fontSize}px 'Inter', Arial, sans-serif`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(timerText, rectX + rectWidth / 2, rectY + rectHeight / 2);
-        
-        ctx.restore();
-    });
+            
+            // ФИНАЛЬНЫЙ ФОЛБЭК — только если вообще ничего не работает
+            let rectY;
+            if (yCoord !== null && yCoord !== undefined && yCoord > 0) {
+                rectY = yCoord - rectHeight / 2;
+            } else {
+                // Используем процент от высоты как в оригинале
+                // Но берем 50% — это будет похоже на центр, 
+                // пока не появятся реальные данные
+                rectY = scope.mediaSize.height * 0.3;
+            }
+            
+            // НЕ ДАЕМ ВЫЙТИ ЗА ГРАНИЦЫ (опционально)
+            const minY = rectHeight / 2;
+            const maxY = scope.mediaSize.height - rectHeight / 2;
+            rectY = Math.max(minY, Math.min(maxY, rectY));
+            
+            const lastCandle = chartManager.getLastCandle();
+            const isBullish = lastCandle ? lastCandle.close >= lastCandle.open : true;
+            const bullishColor = chartManager.bullishColor || '#00bcd4';
+            const bearishColor = chartManager.bearishColor || '#f23645';
+            const bgColor = isBullish ? bullishColor : bearishColor;
+            
+            ctx.save();
+            ctx.fillStyle = bgColor;
+            ctx.shadowColor = 'rgba(0,0,0,0.5)';
+            ctx.shadowBlur = 4 * scope.horizontalPixelRatio;
+            ctx.beginPath();
+            this._roundRect(ctx, rectX, rectY, rectWidth, rectHeight, 4 * scope.horizontalPixelRatio);
+            ctx.fill();
+            
+            ctx.shadowBlur = 0;
+            ctx.fillStyle = '#FFFFFF';
+            ctx.font = `bold ${fontSize}px 'Inter', Arial, sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(timerText, rectX + rectWidth / 2, rectY + rectHeight / 2);
+            ctx.restore();
+        });
+    }
+    
+    _roundRect(ctx, x, y, w, h, r) {
+        if (w < 2 * r) r = w / 2;
+        if (h < 2 * r) r = h / 2;
+        ctx.moveTo(x + r, y);
+        ctx.lineTo(x + w - r, y);
+        ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+        ctx.lineTo(x + w, y + h - r);
+        ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+        ctx.lineTo(x + r, y + h);
+        ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+        ctx.lineTo(x, y + r);
+        ctx.quadraticCurveTo(x, y, x + r, y);
+    }
 }
-
     // В TimerManager добавьте проверку готовности данных
 start(interval) {
     this._currentTf = interval;
@@ -114,22 +144,15 @@ start(interval) {
         return;
     }
     
-    // Дожидаемся загрузки данных перед отображением
-    const checkDataReady = () => {
-        const series = this._chartManager.currentChartType === 'candle' 
-            ? this._chartManager.candleSeries 
-            : this._chartManager.barSeries;
-        
-        if (series && this._chartManager.getLastCandle()) {
-            this._updateTimer();
-            this.stop();
-            this._interval = setInterval(() => this._updateTimer(), 250);
-        } else {
-            setTimeout(checkDataReady, 100);
-        }
-    };
+    // Сбрасываем кеш при смене ТФ
+    if (this._primitive && this._primitive._paneView && this._primitive._paneView._renderer) {
+        this._primitive._paneView._renderer._lastValidY = null;
+        this._primitive._paneView._renderer._initAttempts = 0;
+    }
     
-    checkDataReady();
+    this._updateTimer();
+    this.stop();
+    this._interval = setInterval(() => this._updateTimer(), 250);
 }
     _roundRect(ctx, x, y, w, h, r) {
         if (w < 2 * r) r = w / 2;
