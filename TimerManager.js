@@ -306,4 +306,4 @@ class TimerManager {
 
 if (typeof window !== 'undefined') {
     window.TimerManager = TimerManager;
-}  почему на мак буке таймер находится по середине  графика
+} 
