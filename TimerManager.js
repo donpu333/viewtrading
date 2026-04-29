@@ -39,7 +39,8 @@ class TimerRenderer {
             const rectHeight = (fontSize + paddingV * 2) * scope.verticalPixelRatio;
             
             // Таймер у правого края шкалы
-            const rectX = scope.mediaSize.width - rectWidth - 4 * scope.horizontalPixelRatio;
+        const priceScaleActualWidth = (chartManager.getPriceScaleWidth ? chartManager.getPriceScaleWidth() : 70) * scope.horizontalPixelRatio;
+const rectX = scope.mediaSize.width - priceScaleActualWidth + 4 * scope.horizontalPixelRatio;
             
             const rectY = yCoord - rectHeight / 2;
             const minY = 0;
