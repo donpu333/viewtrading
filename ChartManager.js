@@ -1819,18 +1819,7 @@ applyPriceFormat(precision) {
     
     console.log(`✅ Применён формат цены: ${precision} знаков`);
 }
-    // В ChartManager
-getPriceScaleWidth() {
-    if (!this.chart) return 70;
-    try {
-        // Пробуем получить реальную ширину шкалы
-        const priceScale = this.chart.priceScale('right');
-        if (priceScale && typeof priceScale.width === 'function') {
-            return priceScale.width();
-        }
-    } catch (e) {}
-    return this.priceScaleWidth || 70;
-}
+   
 }
 if (typeof window !== 'undefined') {
     window.ChartManager = ChartManager;
