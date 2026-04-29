@@ -6,85 +6,131 @@ class TimerRenderer {
         this.enabled = true;
     }
 
-    draw(target) {
-        if (!this.enabled) return;
+   draw(target) {
+    if (!this.enabled) return;
+    
+    target.useBitmapCoordinateSpace(scope => {
+        const ctx = scope.context;
+        const chartManager = this._timerManager._chartManager;
+        if (!chartManager) return;
         
-        target.useBitmapCoordinateSpace(scope => {
-            const ctx = scope.context;
-            const chartManager = this._timerManager._chartManager;
-            if (!chartManager) return;
-            
-            const timerText = this._timerManager._timerElement?.textContent || '';
-            if (!timerText) return;
-            
-            const fontSize = 11;
-            ctx.font = `bold ${fontSize}px 'Inter', Arial, sans-serif`;
-            const textWidth = ctx.measureText(timerText).width;
-            const padding = 8 * scope.horizontalPixelRatio;
-            const rectWidth = textWidth + padding * 2;
-            const rectHeight = (fontSize + 8) * scope.verticalPixelRatio;
-            const rectX = scope.mediaSize.width - rectWidth - 5 * scope.horizontalPixelRatio;
-            
-            let price = chartManager.currentRealPrice;
-            if (!price || isNaN(price) || price <= 0) {
-                const lastCandle = chartManager.getLastCandle();
-                price = lastCandle ? lastCandle.close : 0;
-            }
-            
-            const activeSeries = chartManager.currentChartType === 'candle' 
-                ? chartManager.candleSeries 
-                : chartManager.barSeries;
-            
-          let yCoord = activeSeries.priceToCoordinate(price);
-
-// СТАЛО (правильно):
-if (yCoord === null) {
-    // priceScale больше не имеет метода priceToCoordinate
-    // Просто используем цену последней свечи
-    const lastCandle = chartManager.getLastCandle();
-    if (lastCandle) {
-        yCoord = activeSeries.priceToCoordinate(lastCandle.close);
-    }
-}
-
-let rectY;
-if (yCoord !== null && yCoord > 0) {
-    rectY = yCoord - rectHeight / 2;
-} else {
-    // Если совсем не получилось — прижимаем к последней свече
-    const lastCandle = chartManager.getLastCandle();
-    if (lastCandle) {
-        yCoord = activeSeries.priceToCoordinate(lastCandle.close);
-        rectY = yCoord !== null ? yCoord - rectHeight / 2 : 50;
-    } else {
-        rectY = 50;
-    }
-}
-            
+        const timerText = this._timerManager._timerElement?.textContent || '';
+        if (!timerText) return;
+        
+        const fontSize = 11;
+        ctx.font = `bold ${fontSize}px 'Inter', Arial, sans-serif`;
+        const textWidth = ctx.measureText(timerText).width;
+        const padding = 8 * scope.horizontalPixelRatio;
+        const rectWidth = textWidth + padding * 2;
+        const rectHeight = (fontSize + 8) * scope.verticalPixelRatio;
+        const rectX = scope.mediaSize.width - rectWidth - 5 * scope.horizontalPixelRatio;
+        
+        // Получаем текущую цену
+        let price = chartManager.currentRealPrice;
+        if (!price || isNaN(price) || price <= 0) {
             const lastCandle = chartManager.getLastCandle();
-            const isBullish = lastCandle ? lastCandle.close >= lastCandle.open : true;
-            const bullishColor = chartManager.bullishColor || '#00bcd4';
-            const bearishColor = chartManager.bearishColor || '#f23645';
-            const bgColor = isBullish ? bullishColor : bearishColor;
-            
-            ctx.save();
-            ctx.fillStyle = bgColor;
-            ctx.shadowColor = 'rgba(0,0,0,0.5)';
-            ctx.shadowBlur = 4 * scope.horizontalPixelRatio;
-            ctx.beginPath();
-            this._roundRect(ctx, rectX, rectY, rectWidth, rectHeight, 4 * scope.horizontalPixelRatio);
-            ctx.fill();
-            
-            ctx.shadowBlur = 0;
-            ctx.fillStyle = '#FFFFFF';
-            ctx.font = `bold ${fontSize}px 'Inter', Arial, sans-serif`;
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText(timerText, rectX + rectWidth / 2, rectY + rectHeight / 2);
-            ctx.restore();
-        });
+            price = lastCandle ? lastCandle.close : 0;
+        }
+        
+        const activeSeries = chartManager.currentChartType === 'candle' 
+            ? chartManager.candleSeries 
+            : chartManager.barSeries;
+        
+        // ИСПРАВЛЕНО: Правильный расчет Y координаты
+        let yCoord = null;
+        
+        // Пробуем получить координату через активную серию
+        if (activeSeries && price > 0) {
+            yCoord = activeSeries.priceToCoordinate(price);
+        }
+        
+        // Если не получилось - используем последнюю свечу
+        if (yCoord === null || yCoord === undefined || yCoord < 0) {
+            const lastCandle = chartManager.getLastCandle();
+            if (lastCandle && lastCandle.close > 0 && activeSeries) {
+                yCoord = activeSeries.priceToCoordinate(lastCandle.close);
+            }
+        }
+        
+        // Фолбэк: используем середину видимой области
+        if (yCoord === null || yCoord === undefined || yCoord < 0) {
+            // Получаем видимый диапазон цен
+            const timeScale = chartManager.chart?.timeScale();
+            if (timeScale) {
+                const visibleRange = timeScale.getVisibleLogicalRange();
+                if (visibleRange) {
+                    // Используем середину графика по вертикали
+                    yCoord = scope.mediaSize.height * 0.3; // 30% от верха
+                }
+            }
+        }
+        
+        // Финальный фолбэк
+        if (yCoord === null || yCoord === undefined || yCoord < 0) {
+            yCoord = scope.mediaSize.height * 0.3;
+        }
+        
+        // Ограничиваем Y, чтобы не выходить за пределы
+        const minY = rectHeight;
+        const maxY = scope.mediaSize.height - rectHeight;
+        const rectY = Math.max(minY, Math.min(maxY, yCoord - rectHeight / 2));
+        
+        const lastCandle = chartManager.getLastCandle();
+        const isBullish = lastCandle ? lastCandle.close >= lastCandle.open : true;
+        const bullishColor = chartManager.bullishColor || '#00bcd4';
+        const bearishColor = chartManager.bearishColor || '#f23645';
+        const bgColor = isBullish ? bullishColor : bearishColor;
+        
+        ctx.save();
+        
+        // Рисуем фон с тенью
+        ctx.fillStyle = bgColor;
+        ctx.shadowColor = 'rgba(0,0,0,0.5)';
+        ctx.shadowBlur = 4 * scope.horizontalPixelRatio;
+        ctx.beginPath();
+        this._roundRect(ctx, rectX, rectY, rectWidth, rectHeight, 4 * scope.horizontalPixelRatio);
+        ctx.fill();
+        
+        // Рисуем текст
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = '#FFFFFF';
+        ctx.font = `bold ${fontSize}px 'Inter', Arial, sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(timerText, rectX + rectWidth / 2, rectY + rectHeight / 2);
+        
+        ctx.restore();
+    });
+}
+
+    // В TimerManager добавьте проверку готовности данных
+start(interval) {
+    this._currentTf = interval;
+    
+    if (this._isDayTimeframe(interval)) {
+        this._timerElement.textContent = '';
+        if (this._primitive) this._primitive.setEnabled(false);
+        this.stop();
+        return;
     }
     
+    // Дожидаемся загрузки данных перед отображением
+    const checkDataReady = () => {
+        const series = this._chartManager.currentChartType === 'candle' 
+            ? this._chartManager.candleSeries 
+            : this._chartManager.barSeries;
+        
+        if (series && this._chartManager.getLastCandle()) {
+            this._updateTimer();
+            this.stop();
+            this._interval = setInterval(() => this._updateTimer(), 250);
+        } else {
+            setTimeout(checkDataReady, 100);
+        }
+    };
+    
+    checkDataReady();
+}
     _roundRect(ctx, x, y, w, h, r) {
         if (w < 2 * r) r = w / 2;
         if (h < 2 * r) r = h / 2;
