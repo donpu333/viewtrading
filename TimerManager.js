@@ -1,4 +1,4 @@
-
+// ========== ВСПОМОГАТЕЛЬНЫЕ КЛАССЫ ==========
 
 class TimerRenderer {
     constructor(timerManager) {
@@ -38,10 +38,7 @@ class TimerRenderer {
             const rectWidth = textWidth + paddingH * 2;
             const rectHeight = (fontSize + paddingV * 2) * scope.verticalPixelRatio;
             
-           // Получаем точную координату правого края графика
-const priceScale = chartManager.chart.priceScale('right');
-const priceScaleWidth = priceScale ? priceScale.width() : 70;
-const rectX = scope.mediaSize.width + priceScaleWidth * scope.horizontalPixelRatio - rectWidth - 4 * scope.horizontalPixelRatio;
+       const rectX = scope.mediaSize.width - rectWidth;
             
             const rectY = yCoord - rectHeight / 2;
             const minY = 0;
@@ -230,10 +227,7 @@ class TimerManager {
                 if (!this._primitive.isEnabled()) {
                     this._primitive.setEnabled(true);
                 }
-               if (this._chartManager && this._chartManager.chart) {
-    const currentWidth = this._chartManager.chart.options().width;
-    this._chartManager.chart.applyOptions({ width: currentWidth });
-}
+                this._primitive.requestRedraw();
             }
         }
     }
