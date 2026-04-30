@@ -1686,7 +1686,7 @@ class TrendLineRenderer {
     }
     return null;
 }
-
+}
 class TrendLinePaneView {
     constructor(trendLine, chartManager) {
         this._trendLine = trendLine;
