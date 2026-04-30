@@ -17,62 +17,77 @@ class TimerRenderer {
             const timerText = this._timerManager._timerElement?.textContent || '';
             if (!timerText) return;
             
+            const fontSize = 11;
+            ctx.font = `bold ${fontSize}px 'Inter', Arial, sans-serif`;
+            const textWidth = ctx.measureText(timerText).width;
+            const padding = 8 * scope.horizontalPixelRatio;
+            const rectWidth = textWidth + padding * 2;
+            const rectHeight = (fontSize + 8) * scope.verticalPixelRatio;
+            const rectX = scope.mediaSize.width - rectWidth - 5 * scope.horizontalPixelRatio;
+            
+            let price = chartManager.currentRealPrice;
+            if (!price || isNaN(price) || price <= 0) {
+                const lastCandle = chartManager.getLastCandle();
+                price = lastCandle ? lastCandle.close : 0;
+            }
+            
             const activeSeries = chartManager.currentChartType === 'candle' 
                 ? chartManager.candleSeries 
                 : chartManager.barSeries;
             
-            if (!activeSeries) return;
+          let yCoord = activeSeries.priceToCoordinate(price);
+
+// СТАЛО (правильно):
+if (yCoord === null) {
+    // priceScale больше не имеет метода priceToCoordinate
+    // Просто используем цену последней свечи
+    const lastCandle = chartManager.getLastCandle();
+    if (lastCandle) {
+        yCoord = activeSeries.priceToCoordinate(lastCandle.close);
+    }
+}
+
+let rectY;
+if (yCoord !== null && yCoord > 0) {
+    rectY = yCoord - rectHeight / 2;
+} else {
+    // Если совсем не получилось — прижимаем к последней свече
+    const lastCandle = chartManager.getLastCandle();
+    if (lastCandle) {
+        yCoord = activeSeries.priceToCoordinate(lastCandle.close);
+        rectY = yCoord !== null ? yCoord - rectHeight / 2 : 50;
+    } else {
+        rectY = 50;
+    }
+}
             
             const lastCandle = chartManager.getLastCandle();
-            if (!lastCandle) return;
-            
-            const yCoord = activeSeries.priceToCoordinate(lastCandle.close);
-            if (yCoord === null || yCoord === undefined) return;
-            
-            const fontSize = 11;
-            const fontFamily = "-apple-system, 'Inter', Arial, sans-serif";
-            ctx.font = `bold ${fontSize}px ${fontFamily}`;
-            const textWidth = ctx.measureText(timerText).width;
-            const paddingH = 6 * scope.horizontalPixelRatio;
-            const paddingV = 3 * scope.verticalPixelRatio;
-            const rectWidth = textWidth + paddingH * 2;
-            const rectHeight = (fontSize + paddingV * 2) * scope.verticalPixelRatio;
-            
-       const rectX = scope.mediaSize.width - rectWidth;
-            
-            const rectY = yCoord - rectHeight / 2;
-            const minY = 0;
-            const maxY = scope.mediaSize.height - rectHeight;
-            const clampedY = Math.max(minY, Math.min(maxY, rectY));
-            
-            const isBullish = lastCandle.close >= lastCandle.open;
-            const bgColor = isBullish 
-                ? (chartManager.bullishColor || '#26a69a')
-                : (chartManager.bearishColor || '#ef5350');
+            const isBullish = lastCandle ? lastCandle.close >= lastCandle.open : true;
+            const bullishColor = chartManager.bullishColor || '#00bcd4';
+            const bearishColor = chartManager.bearishColor || '#f23645';
+            const bgColor = isBullish ? bullishColor : bearishColor;
             
             ctx.save();
             ctx.fillStyle = bgColor;
-            ctx.shadowColor = 'rgba(0, 0, 0, 0.4)';
-            ctx.shadowBlur = 3 * scope.horizontalPixelRatio;
-            ctx.shadowOffsetY = 1 * scope.verticalPixelRatio;
+            ctx.shadowColor = 'rgba(0,0,0,0.5)';
+            ctx.shadowBlur = 4 * scope.horizontalPixelRatio;
             ctx.beginPath();
-            this._roundRect(ctx, rectX, clampedY, rectWidth, rectHeight, 3 * scope.horizontalPixelRatio);
+            this._roundRect(ctx, rectX, rectY, rectWidth, rectHeight, 4 * scope.horizontalPixelRatio);
             ctx.fill();
             
-            ctx.shadowColor = 'transparent';
             ctx.shadowBlur = 0;
-            ctx.shadowOffsetY = 0;
-            ctx.fillStyle = '#ffffff';
-            ctx.font = `bold ${fontSize}px ${fontFamily}`;
+            ctx.fillStyle = '#FFFFFF';
+            ctx.font = `bold ${fontSize}px 'Inter', Arial, sans-serif`;
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            ctx.fillText(timerText, rectX + rectWidth / 2, clampedY + rectHeight / 2);
+            ctx.fillText(timerText, rectX + rectWidth / 2, rectY + rectHeight / 2);
             ctx.restore();
         });
     }
     
     _roundRect(ctx, x, y, w, h, r) {
-        r = Math.min(r, w / 2, h / 2);
+        if (w < 2 * r) r = w / 2;
+        if (h < 2 * r) r = h / 2;
         ctx.moveTo(x + r, y);
         ctx.lineTo(x + w - r, y);
         ctx.quadraticCurveTo(x + w, y, x + w, y + r);
@@ -155,36 +170,37 @@ class TimerManager {
         setTimeout(() => this._createPrimitive(), 500);
     }
 
-    _createPrimitive() {
-        if (!this._chartManager || !this._chartManager.chart) return;
-        
-        this._primitive = new TimerPrimitive(this, this._chartManager);
-        
-        const series = this._chartManager.currentChartType === 'candle' 
-            ? this._chartManager.candleSeries 
-            : this._chartManager.barSeries;
-        
-        if (series) {
-            try {
-                series.attachPrimitive(this._primitive);
-                
-                if (this._isDayTimeframe(this._currentTf)) {
-                    this._primitive.setEnabled(false);
-                }
-                
-                series.subscribeDataChanged(() => {
-                    if (this._primitive && this._primitive.isEnabled()) {
-                        this._primitive.requestRedraw();
-                    }
-                });
-                
-                console.log('✅ TimerManager: примитив создан');
-            } catch (e) {
-                console.warn('❌ TimerManager: ошибка создания примитива:', e);
+  _createPrimitive() {
+    if (!this._chartManager || !this._chartManager.chart) return;
+    
+    this._primitive = new TimerPrimitive(this, this._chartManager);
+    
+    const series = this._chartManager.currentChartType === 'candle' 
+        ? this._chartManager.candleSeries 
+        : this._chartManager.barSeries;
+    
+    if (series) {
+        try {
+            series.attachPrimitive(this._primitive);
+            
+            // Скрываем на дневных ТФ
+            if (this._isDayTimeframe(this._currentTf)) {
+                this._primitive.setEnabled(false);
             }
+            
+            // 👇 СИНХРОНИЗАЦИЯ С ДАННЫМИ СЕРИИ
+            series.subscribeDataChanged(() => {
+                if (this._primitive && this._primitive.isEnabled()) {
+                    this._primitive.requestRedraw();
+                }
+            });
+            
+            console.log('✅ TimerManager: примитив создан');
+        } catch (e) {
+            console.warn('❌ TimerManager: ошибка создания примитива:', e);
         }
     }
-
+}
     _isDayTimeframe(interval) {
         return ['1d', '1w', '1M'].includes(interval);
     }
