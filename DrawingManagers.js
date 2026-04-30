@@ -1494,153 +1494,160 @@ class TrendLineRenderer {
     this._pixelRatio = window.devicePixelRatio || 1;
     }
 
+   
     draw(target) {
-    const currentKey = this._chartManager.getCurrentSymbolKey?.();
-    if (currentKey && this._trendLine.symbolKey !== currentKey) return;
+        const currentKey = this._chartManager.getCurrentSymbolKey?.();
+        if (currentKey && this._trendLine.symbolKey !== currentKey) return;
 
-    target.useBitmapCoordinateSpace(scope => {
-        const ctx = scope.context;
-        const line = this._trendLine;
-        const chartManager = this._chartManager;
+        target.useBitmapCoordinateSpace(scope => {
+            const ctx = scope.context;
+            const line = this._trendLine;
+            const chartManager = this._chartManager;
 
-        const currentTf = chartManager.currentInterval;
-        if (!line.isVisibleOnTimeframe(currentTf)) return;
+            const currentTf = chartManager.currentInterval;
+            if (!line.isVisibleOnTimeframe(currentTf)) return;
 
-        let point1X, point1Y, point2X, point2Y;
+            let point1X, point1Y, point2X, point2Y;
 
-        // ===== ИСПОЛЬЗУЕМ FALLBACK-МЕТОДЫ =====
-        if (line._tempPixel1) {
-            point1X = line._tempPixel1.x / scope.horizontalPixelRatio;
-            point1Y = line._tempPixel1.y / scope.verticalPixelRatio;
-        } else {
-            point1X = chartManager.timeToCoordinateWithFallback?.(line.point1.time) 
-                      ?? chartManager.timeToCoordinate(line.point1.time);
-            point1Y = chartManager.priceToCoordinateWithFallback?.(line.point1.price)
-                      ?? chartManager.priceToCoordinate(line.point1.price);
-        }
-
-        if (line._tempPixel2) {
-            point2X = line._tempPixel2.x / scope.horizontalPixelRatio;
-            point2Y = line._tempPixel2.y / scope.verticalPixelRatio;
-        } else {
-            point2X = chartManager.timeToCoordinateWithFallback?.(line.point2.time) 
-                      ?? chartManager.timeToCoordinate(line.point2.time);
-            point2Y = chartManager.priceToCoordinateWithFallback?.(line.point2.price)
-                      ?? chartManager.priceToCoordinate(line.point2.price);
-        }
-
-        // ===== ЕСЛИ ДАННЫЕ ПРОПАЛИ, ИСПОЛЬЗУЕМ КЭШ =====
-        if (point1X === null || point1Y === null || point2X === null || point2Y === null) {
-            if (this._lastValidPoint1 && this._lastValidPoint2) {
-                point1X = this._lastValidPoint1.x;
-                point1Y = this._lastValidPoint1.y;
-                point2X = this._lastValidPoint2.x;
-                point2Y = this._lastValidPoint2.y;
+            // ===== ИСПОЛЬЗУЕМ FALLBACK-МЕТОДЫ =====
+            if (line._tempPixel1) {
+                point1X = line._tempPixel1.x / scope.horizontalPixelRatio;
+                point1Y = line._tempPixel1.y / scope.verticalPixelRatio;
             } else {
-                return;
+                point1X = chartManager.timeToCoordinateWithFallback?.(line.point1.time) 
+                          ?? chartManager.timeToCoordinate(line.point1.time);
+                point1Y = chartManager.priceToCoordinateWithFallback?.(line.point1.price)
+                          ?? chartManager.priceToCoordinate(line.point1.price);
             }
-        } else {
-            this._lastValidPoint1 = { x: point1X, y: point1Y };
-            this._lastValidPoint2 = { x: point2X, y: point2Y };
-        }
 
-        
-
-        const { position: x1 } = positionsLine(point1X, scope.horizontalPixelRatio, 1, true);
-        const { position: y1, length: y1Length } = positionsLine(point1Y, scope.verticalPixelRatio, line.options.lineWidth, false);
-        const { position: x2 } = positionsLine(point2X, scope.horizontalPixelRatio, 1, true);
-        const { position: y2, length: y2Length } = positionsLine(point2Y, scope.verticalPixelRatio, line.options.lineWidth, false);
-
-        this._hitAreaPoint1 = { x: x1, y: y1 + y1Length/2, radius: 10 };
-        this._hitAreaPoint2 = { x: x2, y: y2 + y2Length/2, radius: 10 };
-        this._hitAreaLine = {
-            x1, y1: y1 + y1Length/2,
-            x2, y2: y2 + y2Length/2,
-            height: y1Length
-        };
-
-        ctx.save();
-
-        const color = line.options.color;
-        const opacity = line.options.opacity !== undefined ? line.options.opacity : 0.9;
-
-        const parseHex = (hex) => {
-            const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-            return result ? { r: parseInt(result[1], 16), g: parseInt(result[2], 16), b: parseInt(result[3], 16) } : null;
-        };
-        const parseRgb = (rgb) => {
-            const result = /rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)/i.exec(rgb);
-            return result ? { r: parseInt(result[1], 10), g: parseInt(result[2], 10), b: parseInt(result[3], 10) } : null;
-        };
-
-        let rgbaColor;
-        let parsed = parseHex(color) || parseRgb(color);
-        if (parsed) {
-            rgbaColor = `rgba(${parsed.r}, ${parsed.g}, ${parsed.b}, ${opacity})`;
-        } else {
-            rgbaColor = color;
-        }
-
-        ctx.strokeStyle = rgbaColor;
-        ctx.lineWidth = y1Length;
-
-        if (line.options.lineStyle === 'dashed') ctx.setLineDash([10, 8]);
-        else if (line.options.lineStyle === 'dotted') ctx.setLineDash([2, 4]);
-        else ctx.setLineDash([]);
-
-        // ===== ОСНОВНАЯ ЛИНИЯ МЕЖДУ ТОЧКАМИ =====
-        ctx.beginPath();
-        ctx.moveTo(x1, y1 + y1Length/2);
-        ctx.lineTo(x2, y2 + y2Length/2);
-        ctx.stroke();
-
-        // ===== ПРОДОЛЖЕНИЕ ВПРАВО (ЕСЛИ ВКЛЮЧЕНО) =====
-        if (line.options.extendRight) {
-            const rightBoundX = scope.bitmapSize.width;
-            let extendX, extendY;
-            if (Math.abs(x2 - x1) < 0.001) {
-                extendX = x1;
-                extendY = y2 + y2Length/2;
+            if (line._tempPixel2) {
+                point2X = line._tempPixel2.x / scope.horizontalPixelRatio;
+                point2Y = line._tempPixel2.y / scope.verticalPixelRatio;
             } else {
-                const slope = ( (y2 + y2Length/2) - (y1 + y1Length/2) ) / (x2 - x1);
-                const intercept = (y1 + y1Length/2) - slope * x1;
-                extendX = rightBoundX;
-                extendY = slope * extendX + intercept;
+                point2X = chartManager.timeToCoordinateWithFallback?.(line.point2.time) 
+                          ?? chartManager.timeToCoordinate(line.point2.time);
+                point2Y = chartManager.priceToCoordinateWithFallback?.(line.point2.price)
+                          ?? chartManager.priceToCoordinate(line.point2.price);
             }
+
+            // ===== ЕСЛИ ДАННЫЕ ПРОПАЛИ, ИСПОЛЬЗУЕМ КЭШ =====
+            if (point1X === null || point1Y === null || point2X === null || point2Y === null) {
+                if (this._lastValidPoint1 && this._lastValidPoint2) {
+                    point1X = this._lastValidPoint1.x;
+                    point1Y = this._lastValidPoint1.y;
+                    point2X = this._lastValidPoint2.x;
+                    point2Y = this._lastValidPoint2.y;
+                } else {
+                    return; // нечего рисовать
+                }
+            } else {
+                // Сохраняем валидные координаты
+                this._lastValidPoint1 = { x: point1X, y: point1Y };
+                this._lastValidPoint2 = { x: point2X, y: point2Y };
+            }
+
+            const { position: x1 } = positionsLine(point1X, scope.horizontalPixelRatio, 1, true);
+            const { position: y1, length: y1Length } = positionsLine(point1Y, scope.verticalPixelRatio, line.options.lineWidth, false);
+            const { position: x2 } = positionsLine(point2X, scope.horizontalPixelRatio, 1, true);
+            const { position: y2, length: y2Length } = positionsLine(point2Y, scope.verticalPixelRatio, line.options.lineWidth, false);
+
+            this._hitAreaPoint1 = { x: x1, y: y1 + y1Length/2, radius: 10 };
+            this._hitAreaPoint2 = { x: x2, y: y2 + y2Length/2, radius: 10 };
+            this._hitAreaLine = {
+                x1, y1: y1 + y1Length/2,
+                x2, y2: y2 + y2Length/2,
+                height: y1Length
+            };
+
+            ctx.save();
+
+            const color = line.options.color;
+            const opacity = line.options.opacity !== undefined ? line.options.opacity : 0.9;
+
+            const parseHex = (hex) => {
+                const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+                return result ? { r: parseInt(result[1], 16), g: parseInt(result[2], 16), b: parseInt(result[3], 16) } : null;
+            };
+            const parseRgb = (rgb) => {
+                const result = /rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)/i.exec(rgb);
+                return result ? { r: parseInt(result[1], 10), g: parseInt(result[2], 10), b: parseInt(result[3], 10) } : null;
+            };
+
+            let rgbaColor;
+            let parsed = parseHex(color) || parseRgb(color);
+            if (parsed) {
+                rgbaColor = `rgba(${parsed.r}, ${parsed.g}, ${parsed.b}, ${opacity})`;
+            } else {
+                rgbaColor = color;
+            }
+
+            ctx.strokeStyle = rgbaColor;
+            ctx.lineWidth = y1Length;
+
+            if (line.options.lineStyle === 'dashed') ctx.setLineDash([10, 8]);
+            else if (line.options.lineStyle === 'dotted') ctx.setLineDash([2, 4]);
+            else ctx.setLineDash([]);
+
+            // ===== ОСНОВНАЯ ЛИНИЯ МЕЖДУ ТОЧКАМИ =====
             ctx.beginPath();
-            ctx.moveTo(x2, y2 + y2Length/2);
-            ctx.lineTo(extendX, extendY);
+            ctx.moveTo(x1, y1 + y1Length/2);
+            ctx.lineTo(x2, y2 + y2Length/2);
             ctx.stroke();
-        }
 
-        if (line.hovered || line.dragging || line.selected) {
-            ctx.shadowColor = 'rgba(0,0,0,0.5)';
-            ctx.shadowBlur = 4;
+            // ===== ПРОДОЛЖЕНИЕ ВПРАВО (ЕСЛИ ВКЛЮЧЕНО) =====
+            if (line.options.extendRight) {
+                // Находим правую границу графика в координатах контекста
+                const rightBoundX = scope.bitmapSize.width;
+                
+                // Вычисляем точку пересечения с правой границей
+                let extendX, extendY;
+                
+                if (Math.abs(x2 - x1) < 0.001) {
+                    // Вертикальная линия
+                    extendX = x1;
+                    extendY = y2 + y2Length/2;
+                } else {
+                    const slope = ( (y2 + y2Length/2) - (y1 + y1Length/2) ) / (x2 - x1);
+                    const intercept = (y1 + y1Length/2) - slope * x1;
+                    extendX = rightBoundX;
+                    extendY = slope * extendX + intercept;
+                }
+                
+                // Рисуем продолжение (от правой точки до правой границы)
+                ctx.beginPath();
+                ctx.moveTo(x2, y2 + y2Length/2);
+                ctx.lineTo(extendX, extendY);
+                ctx.stroke();
+            }
 
-            ctx.fillStyle = '#FFFFFF';
-            ctx.beginPath();
-            ctx.arc(x1, y1 + y1Length/2, 6 * scope.horizontalPixelRatio, 0, 2 * Math.PI);
-            ctx.fill();
-            ctx.fillStyle = rgbaColor;
-            ctx.beginPath();
-            ctx.arc(x1, y1 + y1Length/2, 4 * scope.horizontalPixelRatio, 0, 2 * Math.PI);
-            ctx.fill();
+            if (line.hovered || line.dragging || line.selected) {
+                ctx.shadowColor = 'rgba(0,0,0,0.5)';
+                ctx.shadowBlur = 4;
 
-            ctx.fillStyle = '#FFFFFF';
-            ctx.beginPath();
-            ctx.arc(x2, y2 + y2Length/2, 6 * scope.horizontalPixelRatio, 0, 2 * Math.PI);
-            ctx.fill();
-            ctx.fillStyle = rgbaColor;
-            ctx.beginPath();
-            ctx.arc(x2, y2 + y2Length/2, 4 * scope.horizontalPixelRatio, 0, 2 * Math.PI);
-            ctx.fill();
+                ctx.fillStyle = '#FFFFFF';
+                ctx.beginPath();
+                ctx.arc(x1, y1 + y1Length/2, 6 * scope.horizontalPixelRatio, 0, 2 * Math.PI);
+                ctx.fill();
+                ctx.fillStyle = rgbaColor;
+                ctx.beginPath();
+                ctx.arc(x1, y1 + y1Length/2, 4 * scope.horizontalPixelRatio, 0, 2 * Math.PI);
+                ctx.fill();
 
-            ctx.shadowBlur = 0;
-        }
+                ctx.fillStyle = '#FFFFFF';
+                ctx.beginPath();
+                ctx.arc(x2, y2 + y2Length/2, 6 * scope.horizontalPixelRatio, 0, 2 * Math.PI);
+                ctx.fill();
+                ctx.fillStyle = rgbaColor;
+                ctx.beginPath();
+                ctx.arc(x2, y2 + y2Length/2, 4 * scope.horizontalPixelRatio, 0, 2 * Math.PI);
+                ctx.fill();
 
-        ctx.restore();
-    });
-}
+                ctx.shadowBlur = 0;
+            }
+
+            ctx.restore();
+        });
+    }
 
   hitTest(x, y) {
     const isMac = this._isMac;
@@ -2821,9 +2828,9 @@ class RulerLineRenderer {
         this._pixelRatio = window.devicePixelRatio || 1;
     }
 
-    draw(target) {
-        const currentKey = this._chartManager.getCurrentSymbolKey?.();
-        if (currentKey && this._ruler.symbolKey !== currentKey) return;
+     draw(target) {
+         const currentKey = this._chartManager.getCurrentSymbolKey?.();
+    if (currentKey && this._ruler.symbolKey !== currentKey) return;
         target.useBitmapCoordinateSpace(scope => {
             const ctx = scope.context;
             const ruler = this._ruler;
@@ -2832,14 +2839,12 @@ class RulerLineRenderer {
             const currentTf = chartManager.currentInterval;
             if (!ruler.isVisibleOnTimeframe(currentTf)) return;
 
-            let point1X = chartManager.timeToCoordinate(ruler.point1.time);
-            let point1Y = chartManager.priceToCoordinate(ruler.point1.price);
-            let point2X = chartManager.timeToCoordinate(ruler.point2.time);
-            let point2Y = chartManager.priceToCoordinate(ruler.point2.price);
+            const point1X = chartManager.timeToCoordinate(ruler.point1.time);
+            const point1Y = chartManager.priceToCoordinate(ruler.point1.price);
+            const point2X = chartManager.timeToCoordinate(ruler.point2.time);
+            const point2Y = chartManager.priceToCoordinate(ruler.point2.price);
 
             if (point1X === null || point1Y === null || point2X === null || point2Y === null) return;
-
-           
 
             const { position: x1 } = positionsLine(point1X, scope.horizontalPixelRatio, 1, true);
             const { position: y1, length: y1Length } = positionsLine(point1Y, scope.verticalPixelRatio, ruler.options.lineWidth, false);
@@ -2869,11 +2874,19 @@ class RulerLineRenderer {
 
                 const parseHex = (hex) => {
                     const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-                    return result ? { r: parseInt(result[1], 16), g: parseInt(result[2], 16), b: parseInt(result[3], 16) } : null;
+                    return result ? {
+                        r: parseInt(result[1], 16),
+                        g: parseInt(result[2], 16),
+                        b: parseInt(result[3], 16)
+                    } : null;
                 };
                 const parseRgb = (rgb) => {
                     const result = /rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)/i.exec(rgb);
-                    return result ? { r: parseInt(result[1], 10), g: parseInt(result[2], 10), b: parseInt(result[3], 10) } : null;
+                    return result ? {
+                        r: parseInt(result[1], 10),
+                        g: parseInt(result[2], 10),
+                        b: parseInt(result[3], 10)
+                    } : null;
                 };
                 let rgbaFill;
                 let parsed = parseHex(fillColor) || parseRgb(fillColor);
@@ -2966,6 +2979,7 @@ class RulerLineRenderer {
             ctx.restore();
         });
     }
+
 
     _roundRect(ctx, x, y, w, h, r) {
         if (w < 2 * r) r = w / 2;
