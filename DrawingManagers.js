@@ -1490,32 +1490,65 @@ class TrendLineRenderer {
         // КЭШ ПОСЛЕДНИХ ВАЛИДНЫХ КООРДИНАТ – предотвращает исчезновение при null
         this._lastValidPoint1 = null;
         this._lastValidPoint2 = null;
-         this._isMac = /Mac/.test(navigator.userAgent);
-    this._pixelRatio = window.devicePixelRatio || 1;
+        this._isMac = /Mac/.test(navigator.userAgent);
+        this._pixelRatio = window.devicePixelRatio || 1;
     }
 
-     draw(target) {
-         const currentKey = this._chartManager.getCurrentSymbolKey?.();
-    if (currentKey && this._ruler.symbolKey !== currentKey) return;
+    draw(target) {
+        const currentKey = this._chartManager.getCurrentSymbolKey?.();
+        if (currentKey && this._trendLine.symbolKey !== currentKey) return;
+
         target.useBitmapCoordinateSpace(scope => {
             const ctx = scope.context;
-            const ruler = this._ruler;
+            const line = this._trendLine;
             const chartManager = this._chartManager;
 
             const currentTf = chartManager.currentInterval;
-            if (!ruler.isVisibleOnTimeframe(currentTf)) return;
+            if (!line.isVisibleOnTimeframe(currentTf)) return;
 
-            const point1X = chartManager.timeToCoordinate(ruler.point1.time);
-            const point1Y = chartManager.priceToCoordinate(ruler.point1.price);
-            const point2X = chartManager.timeToCoordinate(ruler.point2.time);
-            const point2Y = chartManager.priceToCoordinate(ruler.point2.price);
+            let point1X, point1Y, point2X, point2Y;
 
-            if (point1X === null || point1Y === null || point2X === null || point2Y === null) return;
+            // ===== ИСПОЛЬЗУЕМ FALLBACK-МЕТОДЫ =====
+            if (line._tempPixel1) {
+                point1X = line._tempPixel1.x / scope.horizontalPixelRatio;
+                point1Y = line._tempPixel1.y / scope.verticalPixelRatio;
+            } else {
+                point1X = chartManager.timeToCoordinateWithFallback?.(line.point1.time) 
+                          ?? chartManager.timeToCoordinate(line.point1.time);
+                point1Y = chartManager.priceToCoordinateWithFallback?.(line.point1.price)
+                          ?? chartManager.priceToCoordinate(line.point1.price);
+            }
+
+            if (line._tempPixel2) {
+                point2X = line._tempPixel2.x / scope.horizontalPixelRatio;
+                point2Y = line._tempPixel2.y / scope.verticalPixelRatio;
+            } else {
+                point2X = chartManager.timeToCoordinateWithFallback?.(line.point2.time) 
+                          ?? chartManager.timeToCoordinate(line.point2.time);
+                point2Y = chartManager.priceToCoordinateWithFallback?.(line.point2.price)
+                          ?? chartManager.priceToCoordinate(line.point2.price);
+            }
+
+            // ===== ЕСЛИ ДАННЫЕ ПРОПАЛИ, ИСПОЛЬЗУЕМ КЭШ =====
+            if (point1X === null || point1Y === null || point2X === null || point2Y === null) {
+                if (this._lastValidPoint1 && this._lastValidPoint2) {
+                    point1X = this._lastValidPoint1.x;
+                    point1Y = this._lastValidPoint1.y;
+                    point2X = this._lastValidPoint2.x;
+                    point2Y = this._lastValidPoint2.y;
+                } else {
+                    return; // нечего рисовать
+                }
+            } else {
+                // Сохраняем валидные координаты
+                this._lastValidPoint1 = { x: point1X, y: point1Y };
+                this._lastValidPoint2 = { x: point2X, y: point2Y };
+            }
 
             const { position: x1 } = positionsLine(point1X, scope.horizontalPixelRatio, 1, true);
-            const { position: y1, length: y1Length } = positionsLine(point1Y, scope.verticalPixelRatio, ruler.options.lineWidth, false);
+            const { position: y1, length: y1Length } = positionsLine(point1Y, scope.verticalPixelRatio, line.options.lineWidth, false);
             const { position: x2 } = positionsLine(point2X, scope.horizontalPixelRatio, 1, true);
-            const { position: y2, length: y2Length } = positionsLine(point2Y, scope.verticalPixelRatio, ruler.options.lineWidth, false);
+            const { position: y2, length: y2Length } = positionsLine(point2Y, scope.verticalPixelRatio, line.options.lineWidth, false);
 
             this._hitAreaPoint1 = { x: x1, y: y1 + y1Length/2, radius: 10 };
             this._hitAreaPoint2 = { x: x2, y: y2 + y2Length/2, radius: 10 };
@@ -1527,59 +1560,66 @@ class TrendLineRenderer {
 
             ctx.save();
 
-            const leftX = Math.min(x1, x2);
-            const rightX = Math.max(x1, x2);
-            const topY = Math.min(y1, y2) - y1Length/2;
-            const bottomY = Math.max(y1, y2) + y1Length/2;
-            const width = rightX - leftX;
-            const height = bottomY - topY;
+            const color = line.options.color;
+            const opacity = line.options.opacity !== undefined ? line.options.opacity : 0.9;
 
-            if (width > 0 && height > 0) {
-                const fillColor = ruler.fillColor;
-                const opacity = ruler.options.fillOpacity !== undefined ? ruler.options.fillOpacity : 0.25;
+            const parseHex = (hex) => {
+                const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+                return result ? { r: parseInt(result[1], 16), g: parseInt(result[2], 16), b: parseInt(result[3], 16) } : null;
+            };
+            const parseRgb = (rgb) => {
+                const result = /rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)/i.exec(rgb);
+                return result ? { r: parseInt(result[1], 10), g: parseInt(result[2], 10), b: parseInt(result[3], 10) } : null;
+            };
 
-                const parseHex = (hex) => {
-                    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-                    return result ? {
-                        r: parseInt(result[1], 16),
-                        g: parseInt(result[2], 16),
-                        b: parseInt(result[3], 16)
-                    } : null;
-                };
-                const parseRgb = (rgb) => {
-                    const result = /rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)/i.exec(rgb);
-                    return result ? {
-                        r: parseInt(result[1], 10),
-                        g: parseInt(result[2], 10),
-                        b: parseInt(result[3], 10)
-                    } : null;
-                };
-                let rgbaFill;
-                let parsed = parseHex(fillColor) || parseRgb(fillColor);
-                if (parsed) {
-                    rgbaFill = `rgba(${parsed.r}, ${parsed.g}, ${parsed.b}, ${opacity})`;
-                } else {
-                    rgbaFill = fillColor;
-                }
-
-                ctx.fillStyle = rgbaFill;
-                ctx.fillRect(leftX, topY, width, height);
-                ctx.strokeStyle = fillColor;
-                ctx.lineWidth = 1 * scope.horizontalPixelRatio;
-                ctx.setLineDash([]);
-                ctx.strokeRect(leftX, topY, width, height);
+            let rgbaColor;
+            let parsed = parseHex(color) || parseRgb(color);
+            if (parsed) {
+                rgbaColor = `rgba(${parsed.r}, ${parsed.g}, ${parsed.b}, ${opacity})`;
+            } else {
+                rgbaColor = color;
             }
 
-            ctx.strokeStyle = ruler.fillColor;
+            ctx.strokeStyle = rgbaColor;
             ctx.lineWidth = y1Length;
-            ctx.setLineDash([5, 3]);
+
+            if (line.options.lineStyle === 'dashed') ctx.setLineDash([10, 8]);
+            else if (line.options.lineStyle === 'dotted') ctx.setLineDash([2, 4]);
+            else ctx.setLineDash([]);
+
+            // ===== ОСНОВНАЯ ЛИНИЯ МЕЖДУ ТОЧКАМИ =====
             ctx.beginPath();
             ctx.moveTo(x1, y1 + y1Length/2);
             ctx.lineTo(x2, y2 + y2Length/2);
             ctx.stroke();
-            ctx.setLineDash([]);
 
-            if (ruler.hovered || ruler.dragging || ruler.selected) {
+            // ===== ПРОДОЛЖЕНИЕ ВПРАВО (ЕСЛИ ВКЛЮЧЕНО) =====
+            if (line.options.extendRight) {
+                // Находим правую границу графика в координатах контекста
+                const rightBoundX = scope.bitmapSize.width;
+                
+                // Вычисляем точку пересечения с правой границей
+                let extendX, extendY;
+                
+                if (Math.abs(x2 - x1) < 0.001) {
+                    // Вертикальная линия
+                    extendX = x1;
+                    extendY = y2 + y2Length/2;
+                } else {
+                    const slope = ( (y2 + y2Length/2) - (y1 + y1Length/2) ) / (x2 - x1);
+                    const intercept = (y1 + y1Length/2) - slope * x1;
+                    extendX = rightBoundX;
+                    extendY = slope * extendX + intercept;
+                }
+                
+                // Рисуем продолжение (от правой точки до правой границы)
+                ctx.beginPath();
+                ctx.moveTo(x2, y2 + y2Length/2);
+                ctx.lineTo(extendX, extendY);
+                ctx.stroke();
+            }
+
+            if (line.hovered || line.dragging || line.selected) {
                 ctx.shadowColor = 'rgba(0,0,0,0.5)';
                 ctx.shadowBlur = 4;
 
@@ -1587,7 +1627,7 @@ class TrendLineRenderer {
                 ctx.beginPath();
                 ctx.arc(x1, y1 + y1Length/2, 6 * scope.horizontalPixelRatio, 0, 2 * Math.PI);
                 ctx.fill();
-                ctx.fillStyle = ruler.fillColor;
+                ctx.fillStyle = rgbaColor;
                 ctx.beginPath();
                 ctx.arc(x1, y1 + y1Length/2, 4 * scope.horizontalPixelRatio, 0, 2 * Math.PI);
                 ctx.fill();
@@ -1596,7 +1636,7 @@ class TrendLineRenderer {
                 ctx.beginPath();
                 ctx.arc(x2, y2 + y2Length/2, 6 * scope.horizontalPixelRatio, 0, 2 * Math.PI);
                 ctx.fill();
-                ctx.fillStyle = ruler.fillColor;
+                ctx.fillStyle = rgbaColor;
                 ctx.beginPath();
                 ctx.arc(x2, y2 + y2Length/2, 4 * scope.horizontalPixelRatio, 0, 2 * Math.PI);
                 ctx.fill();
@@ -1604,63 +1644,22 @@ class TrendLineRenderer {
                 ctx.shadowBlur = 0;
             }
 
-            const infoY = topY - 20 * scope.verticalPixelRatio;
-            if (infoY > 10) {
-                const priceChange = ruler.point2.price - ruler.point1.price;
-                const percentChange = (priceChange / ruler.point1.price) * 100;
-                const timeDiffSec = Math.abs(ruler.point2.time - ruler.point1.time);
-                const timeStr = Utils.formatTime(timeDiffSec);
-                const sign = priceChange >= 0 ? '+' : '';
-                const percentStr = `${sign}${percentChange.toFixed(2)}%`;
-                const infoText = `${percentStr}  |  ${timeStr}  |  ${sign}${Utils.formatPrice(Math.abs(priceChange))}`;
-
-                ctx.font = `bold 12px 'Inter', Arial, sans-serif`;
-                const textWidth = ctx.measureText(infoText).width;
-                const padding = 8 * scope.horizontalPixelRatio;
-                const labelWidth = textWidth + padding * 2;
-                const labelHeight = 20 * scope.verticalPixelRatio;
-                const labelX = leftX + width/2 - labelWidth/2;
-                const labelY = infoY - labelHeight;
-
-                this._hitAreaInfo = {
-                    x: labelX, y: labelY,
-                    width: labelWidth, height: labelHeight
-                };
-
-                ctx.fillStyle = '#1E1E1E';
-                ctx.shadowBlur = 4;
-                ctx.shadowColor = 'rgba(0,0,0,0.5)';
-                ctx.beginPath();
-                this._roundRect(ctx, labelX, labelY, labelWidth, labelHeight, 4 * scope.horizontalPixelRatio);
-                ctx.fill();
-
-                ctx.shadowBlur = 0;
-                ctx.fillStyle = '#FFFFFF';
-                ctx.font = `bold 12px 'Inter', Arial, sans-serif`;
-                ctx.textAlign = 'center';
-                ctx.textBaseline = 'middle';
-                ctx.fillText(infoText, labelX + labelWidth/2, labelY + labelHeight/2);
-            }
-
             ctx.restore();
         });
     }
 
-
-  hitTest(x, y) {
-    const isMac = this._isMac;
-    const pixelRatio = this._pixelRatio;
-    const mac = isMac && pixelRatio > 1;
+    hitTest(x, y) {
+    const mac = this._isMac && this._pixelRatio > 1;
     
     if (this._hitAreaPoint1) {
-        const radius = mac ? 20 : 10;
+        const radius = mac ? 20 : this._hitAreaPoint1.radius;
         const dx = x - this._hitAreaPoint1.x;
         const dy = y - this._hitAreaPoint1.y;
         const distance = Math.sqrt(dx*dx + dy*dy);
         if (distance < radius) return { type: 'point1', trendLine: this._trendLine };
     }
     if (this._hitAreaPoint2) {
-        const radius = mac ? 20 : 10;
+        const radius = mac ? 20 : this._hitAreaPoint2.radius;
         const dx = x - this._hitAreaPoint2.x;
         const dy = y - this._hitAreaPoint2.y;
         const distance = Math.sqrt(dx*dx + dy*dy);
@@ -1834,11 +1833,8 @@ class TempTrendLinePrimitive {
 }
 
 // ========== МЕНЕДЖЕР ТРЕНДОВЫХ ЛИНИЙ (ИСПРАВЛЕН) ==========
-// ========== МЕНЕДЖЕР ТРЕНДОВЫХ ЛИНИЙ (ИСПРАВЛЕН MAC) ==========
 class TrendLineManager {
     constructor(chartManager) {
-        this._isMac = /Mac/.test(navigator.userAgent);
-        this._pixelRatio = window.devicePixelRatio || 1;
         this._trendLines = [];
         this._chartManager = chartManager;
         this._selectedLine = null;
@@ -1871,6 +1867,8 @@ class TrendLineManager {
         this._setupHotkeys();
         this._autoLoadTrendLines();
         this._isLoading = false;
+        this._isMac = /Mac/.test(navigator.userAgent);
+        this._pixelRatio = window.devicePixelRatio || 1;
     }
 
     _setupEventListeners() {
@@ -1883,14 +1881,8 @@ class TrendLineManager {
         container.addEventListener('dblclick', this._handleDblClick);
         container.addEventListener('mousemove', (e) => {
             const rect = container.getBoundingClientRect();
-            let mx = e.clientX - rect.left;
-            let my = e.clientY - rect.top;
-            if (this._isMac && this._pixelRatio > 1) {
-                mx *= this._pixelRatio;
-                my *= this._pixelRatio;
-            }
-            this._lastMouseX = mx;
-            this._lastMouseY = my;
+            this._lastMouseX = e.clientX - rect.left;
+            this._lastMouseY = e.clientY - rect.top;
         });
     }
 
@@ -2016,12 +2008,8 @@ class TrendLineManager {
     _handleMouseDown(e) {
         if (e.button !== 0) return;
         const rect = this._chartManager.chartContainer.getBoundingClientRect();
-        let x = e.clientX - rect.left;
-        let y = e.clientY - rect.top;
-        if (this._isMac && this._pixelRatio > 1) {
-            x *= this._pixelRatio;
-            y *= this._pixelRatio;
-        }
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
         const trendMenu = document.getElementById('trendContextMenu');
         if (trendMenu && trendMenu.style.display === 'flex') {
             const menuRect = trendMenu.getBoundingClientRect();
@@ -2075,7 +2063,7 @@ class TrendLineManager {
         }
     }
 
-    _handleMouseMove(e) {
+   _handleMouseMove(e) {
     const rect = this._chartManager.chartContainer.getBoundingClientRect();
     let x = e.clientX - rect.left;
     let y = e.clientY - rect.top;
@@ -2175,8 +2163,8 @@ class TrendLineManager {
             this._requestRedraw();
         }
     }
-}
-    _handleMouseUp(e) {
+}  
+ _handleMouseUp(e) {
         if (this._isDragging) {
             e.preventDefault();
             e.stopPropagation();
@@ -2261,7 +2249,7 @@ class TrendLineManager {
         this._chartManager.chartContainer.style.cursor = 'crosshair';
     }
 
-   _handleContextMenu(e) {
+  _handleContextMenu(e) {
     e.preventDefault();
     e.stopPropagation();
     const rect = this._chartManager.chartContainer.getBoundingClientRect();
@@ -2340,21 +2328,19 @@ class TrendLineManager {
         if (menu) menu.style.display = 'none';
     }
 }
-
     _handleDblClick(e) {
-        e.preventDefault();
-        e.stopPropagation();
-        const rect = this._chartManager.chartContainer.getBoundingClientRect();
-        let x = e.clientX - rect.left;
-        let y = e.clientY - rect.top;
-        if (this._isMac && this._pixelRatio > 1) {
-            x *= this._pixelRatio;
-            y *= this._pixelRatio;
-        }
-        const hit = this.hitTest(x, y);
-        if (hit) this.deleteTrendLine(hit.trendLine.id);
+    e.preventDefault();
+    e.stopPropagation();
+    const rect = this._chartManager.chartContainer.getBoundingClientRect();
+    let x = e.clientX - rect.left;
+    let y = e.clientY - rect.top;
+    if (this._isMac && this._pixelRatio > 1) {
+        x *= this._pixelRatio;
+        y *= this._pixelRatio;
     }
-
+    const hit = this.hitTest(x, y);
+    if (hit) this.deleteTrendLine(hit.trendLine.id);
+}
     _handleKeyDown(e) {
         if (e.key === 'Delete' && this._selectedLine) { this.deleteTrendLine(this._selectedLine.id); this._selectedLine = null; }
     }
@@ -2556,6 +2542,7 @@ _completeDrawing(x, y) {
         document.getElementById('trendColorOpacity').value = Math.round(trendLine.options.opacity * 100);
         document.getElementById('trendColorOpacityValue').textContent = document.getElementById('trendColorOpacity').value + '%';
         
+        // НОВОЕ: установка чекбокса "Продолжить вправо"
         const extendRightCheckbox = document.getElementById('trendExtendRight');
         if (extendRightCheckbox) {
             extendRightCheckbox.checked = trendLine.options.extendRight || false;
@@ -2616,7 +2603,7 @@ _completeDrawing(x, y) {
                 lineWidth: parseInt(document.getElementById('trendSettingThickness').value),
                 lineStyle: document.getElementById('trendTemplateSelect').value,
                 opacity: parseInt(document.getElementById('trendColorOpacity').value) / 100,
-                extendRight: document.getElementById('trendExtendRight')?.checked || false
+                extendRight: document.getElementById('trendExtendRight')?.checked || false   // НОВОЕ
             });
             this._requestRedraw();
             settings.style.display = 'none';
@@ -2725,6 +2712,7 @@ _completeDrawing(x, y) {
                 }
             }
 
+            // Удаляем старые примитивы
             this._trendLines.forEach(item => {
                 try { item.series?.detachPrimitive(item.primitive); } catch(e) {}
             });
@@ -2760,9 +2748,10 @@ _completeDrawing(x, y) {
     }
 
     syncWithNewTimeframe() {
+        // Ничего не делаем – updateAllViews сам всё обновит
     }
 }
-              
+               
 // ========== ЛИНЕЙКА-ИЗМЕРИТЕЛЬ (ИСПРАВЛЕННАЯ - НЕ ПРОПАДАЕТ ПРИ СМЕНЕ ТАЙМФРЕЙМА) ==========
 class RulerLine {
     constructor(point1, point2, chartManager, options = {}) {
