@@ -50,155 +50,145 @@ class HorizontalRayRenderer {
         this._hitArea = null;
         this._priceLabelHitArea = null;
     }
- draw(target) {
-    const currentKey = this._chartManager.getCurrentSymbolKey?.();
+draw(target) {
+         const currentKey = this._chartManager.getCurrentSymbolKey?.();
     if (currentKey && this._ray.symbolKey !== currentKey) return;
-    target.useBitmapCoordinateSpace(scope => {
-        const ctx = scope.context;
-        const ray = this._ray;
-        const chartManager = this._chartManager;
+        target.useBitmapCoordinateSpace(scope => {
+            const ctx = scope.context;
+            const ray = this._ray;
+            const chartManager = this._chartManager;
 
-        const currentTf = chartManager.currentInterval;
-        if (!ray.isVisibleOnTimeframe(currentTf)) {
-            return;
-        }
+            const currentTf = chartManager.currentInterval;
+            if (!ray.isVisibleOnTimeframe(currentTf)) {
+                return;
+            }
 
-        let yCoordinate = chartManager.priceToCoordinate(ray.price);
-        let xCoordinate = chartManager.timeToCoordinate(ray.time);
-        
-        // ТОЛЬКО ДЛЯ MAC
-        const isMac = /Mac/.test(navigator.userAgent);
-        const pixelRatio = window.devicePixelRatio || 1;
-        if (isMac && pixelRatio > 1) {
-            if (xCoordinate !== null) xCoordinate *= pixelRatio;
-            if (yCoordinate !== null) yCoordinate *= pixelRatio;
-        }
-        
-        if (yCoordinate === null || xCoordinate === null) return;
+            const yCoordinate = chartManager.priceToCoordinate(ray.price);
+            const xCoordinate = chartManager.timeToCoordinate(ray.time);
+            if (yCoordinate === null || xCoordinate === null) return;
 
-        const timeScale = chartManager.chart.timeScale();
-        const visibleRange = timeScale.getVisibleLogicalRange();
-        if (!visibleRange) return;
+            const timeScale = chartManager.chart.timeScale();
+            const visibleRange = timeScale.getVisibleLogicalRange();
+            if (!visibleRange) return;
 
-        let startX = 0;
-        let endX = scope.mediaSize.width;
-        if (!ray.options.extendLeft) startX = xCoordinate;
-        if (!ray.options.extendRight) endX = xCoordinate;
+            let startX = 0;
+            let endX = scope.mediaSize.width;
+            if (!ray.options.extendLeft) startX = xCoordinate;
+            if (!ray.options.extendRight) endX = xCoordinate;
 
-        const { position: startPos } = positionsLine(startX, scope.horizontalPixelRatio, 1, true);
-        const { position: endPos } = positionsLine(endX, scope.horizontalPixelRatio, 1, true);
-        const { position: yPos, length: yLength } = positionsLine(
-            yCoordinate, scope.verticalPixelRatio, ray.options.lineWidth, false
-        );
+            const { position: startPos } = positionsLine(startX, scope.horizontalPixelRatio, 1, true);
+            const { position: endPos } = positionsLine(endX, scope.horizontalPixelRatio, 1, true);
+            const { position: yPos, length: yLength } = positionsLine(
+                yCoordinate, scope.verticalPixelRatio, ray.options.lineWidth, false
+            );
 
-        this._hitArea = {
-            y: yPos,
-            height: yLength,
-            x1: Math.min(startPos, endPos),
-            x2: Math.max(startPos, endPos)
-        };
+            this._hitArea = {
+                y: yPos,
+                height: yLength,
+                x1: Math.min(startPos, endPos),
+                x2: Math.max(startPos, endPos)
+            };
 
-        ctx.save();
+            ctx.save();
 
-        const color = ray.options.color;
-        const opacity = ray.options.opacity !== undefined ? ray.options.opacity : 0.9;
+            const color = ray.options.color;
+            const opacity = ray.options.opacity !== undefined ? ray.options.opacity : 0.9;
 
-        const parseHex = (hex) => {
-            const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-            return result ? {
-                r: parseInt(result[1], 16),
-                g: parseInt(result[2], 16),
-                b: parseInt(result[3], 16)
-            } : null;
-        };
+            const parseHex = (hex) => {
+                const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+                return result ? {
+                    r: parseInt(result[1], 16),
+                    g: parseInt(result[2], 16),
+                    b: parseInt(result[3], 16)
+                } : null;
+            };
 
-        const parseRgb = (rgb) => {
-            const result = /rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)/i.exec(rgb);
-            return result ? {
-                r: parseInt(result[1], 10),
-                g: parseInt(result[2], 10),
-                b: parseInt(result[3], 10)
-            } : null;
-        };
+            const parseRgb = (rgb) => {
+                const result = /rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)/i.exec(rgb);
+                return result ? {
+                    r: parseInt(result[1], 10),
+                    g: parseInt(result[2], 10),
+                    b: parseInt(result[3], 10)
+                } : null;
+            };
 
-        let rgbaColor;
-        let parsed = parseHex(color) || parseRgb(color);
-        if (parsed) {
-            rgbaColor = `rgba(${parsed.r}, ${parsed.g}, ${parsed.b}, ${opacity})`;
-        } else {
-            rgbaColor = color;
-        }
+            let rgbaColor;
+            let parsed = parseHex(color) || parseRgb(color);
+            if (parsed) {
+                rgbaColor = `rgba(${parsed.r}, ${parsed.g}, ${parsed.b}, ${opacity})`;
+            } else {
+                rgbaColor = color;
+            }
 
-        ctx.strokeStyle = rgbaColor;
-        ctx.lineWidth = yLength;
-        
-        if (ray.options.lineStyle === 'dashed') ctx.setLineDash([10, 8]);
-        else if (ray.options.lineStyle === 'dotted') ctx.setLineDash([2, 4]);
-        else ctx.setLineDash([]);
-        
-        ctx.beginPath();
-        ctx.moveTo(startPos, yPos + yLength / 2);
-        ctx.lineTo(endPos, yPos + yLength / 2);
-        ctx.stroke();
-
-        if (ray.hovered || ray.dragging || ray.selected || ray.attached) {
-            ctx.fillStyle = '#FFFFFF';
-            ctx.shadowColor = 'rgba(0,0,0,0.5)';
-            ctx.shadowBlur = 4;
-            ctx.beginPath();
-            ctx.arc(Math.round(xCoordinate * scope.horizontalPixelRatio), yPos + yLength / 2, 6 * scope.horizontalPixelRatio, 0, 2 * Math.PI);
-            ctx.fill();
+            ctx.strokeStyle = rgbaColor;
+            ctx.lineWidth = yLength;
             
-            ctx.fillStyle = rgbaColor;
-            ctx.beginPath();
-            ctx.arc(Math.round(xCoordinate * scope.horizontalPixelRatio), yPos + yLength / 2, 4 * scope.horizontalPixelRatio, 0, 2 * Math.PI);
-            ctx.fill();
-        }
-
-        if (ray.options.showPrice) {
-            const priceText = Utils.formatPrice(ray.price);
-
-            ctx.font = `bold ${ray.options.fontSize * scope.horizontalPixelRatio}px 'Inter', Arial, sans-serif`;
-            const textMetrics = ctx.measureText(priceText);
-            const textWidth = textMetrics.width;
-            const padding = 8 * scope.horizontalPixelRatio;
-            const labelWidth = textWidth + padding * 2;
-            const labelHeight = (ray.options.fontSize + 6) * scope.verticalPixelRatio;
-
-            const labelXPos = scope.mediaSize.width * scope.horizontalPixelRatio - labelWidth - 2;
-            const labelYPos = yPos - labelHeight / 2;
-
-            this._priceLabelHitArea = { x: labelXPos, y: labelYPos, width: labelWidth, height: labelHeight };
-
-            ctx.fillStyle = rgbaColor;
-            ctx.shadowBlur = 4;
-            ctx.shadowColor = 'rgba(0,0,0,0.3)';
-            ctx.beginPath();
-            this._roundRect(ctx, labelXPos, labelYPos, labelWidth, labelHeight, 4 * scope.horizontalPixelRatio);
-            ctx.fill();
-
-            ctx.shadowBlur = 0;
+            if (ray.options.lineStyle === 'dashed') ctx.setLineDash([10, 8]);
+            else if (ray.options.lineStyle === 'dotted') ctx.setLineDash([2, 4]);
+            else ctx.setLineDash([]);
             
-            ctx.shadowColor = '#000000';
-            ctx.shadowBlur = 3;
-            ctx.shadowOffsetX = 1;
-            ctx.shadowOffsetY = 1;
-            ctx.fillStyle = '#FFFFFF';
-            ctx.font = `bold ${(ray.options.fontSize + 1) * scope.horizontalPixelRatio}px 'Inter', Arial, sans-serif`;
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText(priceText, labelXPos + labelWidth / 2, labelYPos + labelHeight / 2);
-            
-            ctx.shadowColor = 'transparent';
-            ctx.shadowBlur = 0;
-            ctx.shadowOffsetX = 0;
-            ctx.shadowOffsetY = 0;
-        }
-        
-        ctx.restore();
-    });
-}
+            ctx.beginPath();
+            ctx.moveTo(startPos, yPos + yLength / 2);
+            ctx.lineTo(endPos, yPos + yLength / 2);
+            ctx.stroke();
 
+            if (ray.hovered || ray.dragging || ray.selected || ray.attached) {
+                ctx.fillStyle = '#FFFFFF';
+                ctx.shadowColor = 'rgba(0,0,0,0.5)';
+                ctx.shadowBlur = 4;
+                ctx.beginPath();
+                ctx.arc(Math.round(xCoordinate * scope.horizontalPixelRatio), yPos + yLength / 2, 6 * scope.horizontalPixelRatio, 0, 2 * Math.PI);
+                ctx.fill();
+                
+                ctx.fillStyle = rgbaColor;
+                ctx.beginPath();
+                ctx.arc(Math.round(xCoordinate * scope.horizontalPixelRatio), yPos + yLength / 2, 4 * scope.horizontalPixelRatio, 0, 2 * Math.PI);
+                ctx.fill();
+            }
+
+            if (ray.options.showPrice) {
+                const priceText = Utils.formatPrice(ray.price);
+
+                ctx.font = `bold ${ray.options.fontSize * scope.horizontalPixelRatio}px 'Inter', Arial, sans-serif`;
+                const textMetrics = ctx.measureText(priceText);
+                const textWidth = textMetrics.width;
+                const padding = 8 * scope.horizontalPixelRatio;
+                const labelWidth = textWidth + padding * 2;
+                const labelHeight = (ray.options.fontSize + 6) * scope.verticalPixelRatio;
+
+                const labelXPos = scope.mediaSize.width * scope.horizontalPixelRatio - labelWidth - 2;
+                const labelYPos = yPos - labelHeight / 2;
+
+                this._priceLabelHitArea = { x: labelXPos, y: labelYPos, width: labelWidth, height: labelHeight };
+
+                ctx.fillStyle = rgbaColor;
+                ctx.shadowBlur = 4;
+                ctx.shadowColor = 'rgba(0,0,0,0.3)';
+                ctx.beginPath();
+                this._roundRect(ctx, labelXPos, labelYPos, labelWidth, labelHeight, 4 * scope.horizontalPixelRatio);
+                ctx.fill();
+
+                ctx.shadowBlur = 0;
+                
+                ctx.shadowColor = '#000000';
+                ctx.shadowBlur = 3;
+                ctx.shadowOffsetX = 1;
+                ctx.shadowOffsetY = 1;
+                ctx.fillStyle = '#FFFFFF';
+                ctx.font = `bold ${(ray.options.fontSize + 1) * scope.horizontalPixelRatio}px 'Inter', Arial, sans-serif`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(priceText, labelXPos + labelWidth / 2, labelYPos + labelHeight / 2);
+                
+                ctx.shadowColor = 'transparent';
+                ctx.shadowBlur = 0;
+                ctx.shadowOffsetX = 0;
+                ctx.shadowOffsetY = 0;
+            }
+            
+            ctx.restore();
+        });
+    }
     _roundRect(ctx, x, y, w, h, r) {
         if (w < 2 * r) r = w / 2;
         if (h < 2 * r) r = h / 2;
