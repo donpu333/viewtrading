@@ -202,21 +202,18 @@ draw(target) {
         ctx.lineTo(x, y + r);
         ctx.quadraticCurveTo(x, y, x + r, y);
     }
-
-    // ЭТО В КЛАССЕ HorizontalRayRenderer, метод hitTest
 hitTest(x, y) {
     const isMac = /Mac/.test(navigator.userAgent);
     
     if (this._hitArea) {
         if (isMac) {
-            // MAC: проверяем только по Y, X — на всю ширину графика
             const buffer = 30;
             const inY = Math.abs(y - this._hitArea.y - this._hitArea.height / 2) < (this._hitArea.height / 2 + buffer);
-            const chartWidth = this._chartManager?.chartContainer?.offsetWidth || 9999;
+            const pixelRatio = window.devicePixelRatio || 1;
+            const chartWidth = (this._chartManager?.chartContainer?.offsetWidth || 426) * pixelRatio;
             const inX = x >= 0 && x <= chartWidth;
             if (inX && inY) return 'line';
         } else {
-            // WINDOWS: оригинальная проверка, без изменений
             const buffer = 10;
             const inY = Math.abs(y - this._hitArea.y - this._hitArea.height / 2) < (this._hitArea.height / 2 + buffer);
             const inX = x >= this._hitArea.x1 - buffer && x <= this._hitArea.x2 + buffer;
@@ -226,7 +223,6 @@ hitTest(x, y) {
     
     if (this._priceLabelHitArea) {
         if (isMac) {
-            // MAC: увеличенная зона для лейбла
             const padding = 15;
             const inX = x >= this._priceLabelHitArea.x - padding && 
                         x <= this._priceLabelHitArea.x + this._priceLabelHitArea.width + padding;
@@ -234,7 +230,6 @@ hitTest(x, y) {
                         y <= this._priceLabelHitArea.y + this._priceLabelHitArea.height + padding;
             if (inX && inY) return 'label';
         } else {
-            // WINDOWS: оригинал
             const inX = x >= this._priceLabelHitArea.x && 
                         x <= this._priceLabelHitArea.x + this._priceLabelHitArea.width;
             const inY = y >= this._priceLabelHitArea.y && 
@@ -246,7 +241,6 @@ hitTest(x, y) {
     return null;
 }
 }
-
 class HorizontalRayPaneView {
     constructor(ray, chartManager) {
         this._ray = ray;
