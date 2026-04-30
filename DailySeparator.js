@@ -3,8 +3,8 @@ class DailySeparator {
         this._cm = chartManager;
         this._primitive = null;
         this._requestUpdate = null;
+        this._interval = null; // для принудительного обновления
         
-        // Загружаем настройки
         const saved = localStorage.getItem('separatorSettings');
         if (saved) {
             const s = JSON.parse(saved);
@@ -20,6 +20,11 @@ class DailySeparator {
             this._lineWidth = 1;
             this._opacity = 0.3;
         }
+        
+        // Проверка на Mac с Retina
+        const isMac = /Macintosh/.test(navigator.userAgent);
+        const isRetina = window.devicePixelRatio > 1;
+        this._forceRedraw = isMac && isRetina;
         
         setTimeout(() => this._attach(), 1000);
     }
@@ -55,6 +60,19 @@ class DailySeparator {
         };
         
         series.attachPrimitive(this._primitive);
+        
+        // Принудительная перерисовка для Mac
+        if (this._forceRedraw) {
+            this._interval = setInterval(() => {
+                if (this._cm && this._cm.chart) {
+                    const opts = this._cm.chart.options();
+                    this._cm.chart.applyOptions({ 
+                        rightPriceScale: { visible: opts.rightPriceScale.visible } 
+                    });
+                }
+            }, 1000);
+        }
+        
         console.log('✅ DailySeparator: примитив прикреплён');
     }
     
@@ -72,20 +90,17 @@ class DailySeparator {
             let prevDay = null;
             
             data.forEach(candle => {
-             const mskTime = new Date(candle.time * 1000);
-const day = mskTime.getUTCDate();
+                const mskTime = new Date(candle.time * 1000);
+                const day = mskTime.getUTCDate();
                 if (prevDay !== null && day !== prevDay) {
                     const timeScale = this._cm.chart.timeScale();
                     const x = timeScale.timeToCoordinate(candle.time);
                     
                     if (x !== null && x > 0 && x < scope.mediaSize.width) {
                         ctx.save();
-                        
-                        // Цвет с прозрачностью
                         ctx.strokeStyle = this._hexToRgba(this._color, this._opacity);
                         ctx.lineWidth = this._lineWidth * scope.horizontalPixelRatio;
                         
-                        // Стиль линии
                         if (this._lineStyle === 'dashed') ctx.setLineDash([4, 4]);
                         else if (this._lineStyle === 'dotted') ctx.setLineDash([2, 2]);
                         else ctx.setLineDash([]);
@@ -97,7 +112,6 @@ const day = mskTime.getUTCDate();
                         ctx.restore();
                     }
                 }
-                
                 prevDay = day;
             });
         });
@@ -125,14 +139,26 @@ const day = mskTime.getUTCDate();
             opacity: this._opacity
         }));
         
-        if (this._primitive && this._primitive.requestRedraw) {
-            this._primitive.requestRedraw();
-        }
+        this.redraw();
     }
     
     redraw() {
         if (this._primitive && this._primitive.requestRedraw) {
             this._primitive.requestRedraw();
+        }
+        // Принудительно для Mac
+        if (this._forceRedraw && this._cm && this._cm.chart) {
+            const opts = this._cm.chart.options();
+            this._cm.chart.applyOptions({ 
+                rightPriceScale: { visible: opts.rightPriceScale.visible } 
+            });
+        }
+    }
+    
+    destroy() {
+        if (this._interval) {
+            clearInterval(this._interval);
+            this._interval = null;
         }
     }
 }
