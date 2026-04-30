@@ -208,42 +208,37 @@ class TimerManager {
         this._interval = setInterval(() => this._updateTimer(), 250);
     }
 
-    _updateTimer() {
-        if (this._isDayTimeframe(this._currentTf)) {
-            this._timerElement.textContent = '';
-            if (this._primitive) this._primitive.setEnabled(false);
-            return;
-        }
-        
-        const duration = TF_DURATIONS[this._currentTf];
-        if (!duration) return;
-        
-        const now = Date.now();
-        const moscowNow = Utils.toMoscowTime(now).getTime();
-        const msSinceEpoch = moscowNow % duration;
-        const timeLeft = duration - msSinceEpoch;
-        
-        const newText = Utils.formatTimeRemaining(timeLeft);
-        
-        if (this._timerElement.textContent !== newText) {
-            this._timerElement.textContent = newText;
-            if (this._primitive) {
-                if (!this._primitive.isEnabled()) {
-                    this._primitive.setEnabled(true);
-                }
-                this._primitive.requestRedraw();
-            }
-        }
-        
-        // === ГЛАВНОЕ ИСПРАВЛЕНИЕ ДЛЯ ПЕРЕРИСОВКИ ===
-        // Принудительно вызываем applyOptions каждый тик таймера,
-        // чтобы график точно перерисовался.
-        if (this._chartManager && this._chartManager.chart) {
-            const currentWidth = this._chartManager.chart.options().width;
-            this._chartManager.chart.applyOptions({ width: currentWidth });
-        }
+  _updateTimer() {
+    if (this._isDayTimeframe(this._currentTf)) {
+        this._timerElement.textContent = '';
+        if (this._primitive) this._primitive.setEnabled(false);
+        return;
     }
-
+    
+    const duration = TF_DURATIONS[this._currentTf];
+    if (!duration) return;
+    
+    const now = Date.now();
+    const moscowNow = Utils.toMoscowTime(now).getTime();
+    const msSinceEpoch = moscowNow % duration;
+    const timeLeft = duration - msSinceEpoch;
+    
+    const newText = Utils.formatTimeRemaining(timeLeft);
+    
+    this._timerElement.textContent = newText;
+    
+    // Принудительная перерисовка ВСЕГО графика
+    if (this._chartManager && this._chartManager.chart) {
+        const chart = this._chartManager.chart;
+        const opts = chart.options();
+        // Меняем туда-сюда свойство, которое точно триггерит полный ререндер
+        chart.applyOptions({ 
+            rightPriceScale: { 
+                visible: opts.rightPriceScale.visible 
+            } 
+        });
+    }
+}
     stop() {
         if (this._interval) {
             clearInterval(this._interval);
