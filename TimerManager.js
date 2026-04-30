@@ -48,13 +48,14 @@ class TimerRenderer {
             const scaleWidth = domWidth > canvasWidth ? domWidth - canvasWidth : 0;
             
             // Таймер на шкале, если шкала отдельно. Иначе у правого края canvas.
-            let rectX;
-            if (scaleWidth > 0) {
-                rectX = canvasWidth + scaleWidth - rectWidth - 4 * scope.horizontalPixelRatio;
-            } else {
-                rectX = canvasWidth - rectWidth - 4 * scope.horizontalPixelRatio;
-            }
-            
+            // Привязка X
+let rectX;
+const xCandle = activeSeries.timeToCoordinate?.(lastCandle.time);
+if (xCandle !== null && xCandle !== undefined) {
+    rectX = xCandle + 10 * scope.horizontalPixelRatio;
+} else {
+    rectX = scope.mediaSize.width - rectWidth - 4 * scope.horizontalPixelRatio;
+}
             const rectY = yCoord - rectHeight / 2;
             const minY = 0;
             const maxY = scope.mediaSize.height - rectHeight;
