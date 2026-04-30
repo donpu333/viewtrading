@@ -38,11 +38,12 @@ class TimerRenderer {
             const rectWidth = textWidth + paddingH * 2;
             const rectHeight = (fontSize + paddingV * 2) * scope.verticalPixelRatio;
             
-           // Получаем точную координату правого края графика
-const priceScale = chartManager.chart.priceScale('right');
-const priceScaleWidth = priceScale ? priceScale.width() : 70;
-const rectX = scope.mediaSize.width + priceScaleWidth * scope.horizontalPixelRatio - rectWidth - 4 * scope.horizontalPixelRatio;
+            // === ГЛАВНОЕ ИСПРАВЛЕНИЕ ДЛЯ X ===
+            // Не используем width шкалы для рисования ВНУТРИ canvas.
+            // Рисуем ПРЯМО У ПРАВОГО КРАЯ графика.
+            const rectX = scope.mediaSize.width - rectWidth;
             
+            // === ИСПРАВЛЕНИЕ ДЛЯ Y ===
             const rectY = yCoord - rectHeight / 2;
             const minY = 0;
             const maxY = scope.mediaSize.height - rectHeight;
@@ -230,11 +231,16 @@ class TimerManager {
                 if (!this._primitive.isEnabled()) {
                     this._primitive.setEnabled(true);
                 }
-               if (this._chartManager && this._chartManager.chart) {
-    const currentWidth = this._chartManager.chart.options().width;
-    this._chartManager.chart.applyOptions({ width: currentWidth });
-}
+                this._primitive.requestRedraw();
             }
+        }
+        
+        // === ГЛАВНОЕ ИСПРАВЛЕНИЕ ДЛЯ ПЕРЕРИСОВКИ ===
+        // Принудительно вызываем applyOptions каждый тик таймера,
+        // чтобы график точно перерисовался.
+        if (this._chartManager && this._chartManager.chart) {
+            const currentWidth = this._chartManager.chart.options().width;
+            this._chartManager.chart.applyOptions({ width: currentWidth });
         }
     }
 
@@ -286,4 +292,4 @@ class TimerManager {
 
 if (typeof window !== 'undefined') {
     window.TimerManager = TimerManager;
-} 
+}
