@@ -230,7 +230,10 @@ class TimerManager {
                 if (!this._primitive.isEnabled()) {
                     this._primitive.setEnabled(true);
                 }
-                this._primitive.requestRedraw();
+               if (this._chartManager && this._chartManager.chart) {
+    const currentWidth = this._chartManager.chart.options().width;
+    this._chartManager.chart.applyOptions({ width: currentWidth });
+}
             }
         }
     }
