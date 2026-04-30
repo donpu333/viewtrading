@@ -446,7 +446,7 @@ _autoLoadRays() {
         });
     }
 
-   _handleContextMenu(e) {
+ _handleContextMenu(e) {
     e.preventDefault();
     e.stopPropagation();
 
@@ -470,8 +470,15 @@ _autoLoadRays() {
         hit.ray.showDragPoint = true;
         hit.ray.attached = false;
 
-        const rayX = this._chartManager.timeToCoordinate(hit.ray.time);
-        const rayY = this._chartManager.priceToCoordinate(hit.ray.price);
+        let rayX = this._chartManager.timeToCoordinate(hit.ray.time);
+        let rayY = this._chartManager.priceToCoordinate(hit.ray.price);
+        
+        // ТОЛЬКО ДЛЯ MAC
+        if (this._isMac && this._pixelRatio > 1) {
+            if (rayX !== null) rayX *= this._pixelRatio;
+            if (rayY !== null) rayY *= this._pixelRatio;
+        }
+        
         if (rayX !== null && rayY !== null) {
             hit.ray.dragPointX = rayX;
             hit.ray.dragPointY = rayY;
@@ -481,49 +488,48 @@ _autoLoadRays() {
         this._requestRedraw();
         
         
-            const menu = document.getElementById('drawingContextMenu');
-            if (menu) {
-                document.getElementById('trendContextMenu').style.display = 'none';
-                document.getElementById('alertContextMenu').style.display = 'none';
-                
-                menu.style.display = 'flex';
-                menu.style.left = e.clientX + 'px';
-                menu.style.top = e.clientY + 'px';
-                
-                const copyBtn = document.getElementById('contextCopyBtn');
-                const newCopyBtn = copyBtn.cloneNode(true);
-                copyBtn.parentNode.replaceChild(newCopyBtn, copyBtn);
-                newCopyBtn.onclick = (event) => {
-                    event.stopPropagation();
-                    const priceText = Utils.formatPrice(hit.ray.price);
-                    navigator.clipboard?.writeText(priceText);
-                    menu.style.display = 'none';
-                };
-                
-                const settingsBtn = document.getElementById('contextSettingsBtn');
-                const newSettingsBtn = settingsBtn.cloneNode(true);
-                settingsBtn.parentNode.replaceChild(newSettingsBtn, settingsBtn);
-                newSettingsBtn.onclick = (event) => {
-                    event.stopPropagation();
-                    this._showSettings(hit.ray);
-                    menu.style.display = 'none';
-                };
-                
-                const deleteBtn = document.getElementById('contextDeleteBtn');
-                const newDeleteBtn = deleteBtn.cloneNode(true);
-                deleteBtn.parentNode.replaceChild(newDeleteBtn, deleteBtn);
-                newDeleteBtn.onclick = (event) => {
-                    event.stopPropagation();
-                    this.deleteRay(hit.ray.id);
-                    menu.style.display = 'none';
-                };
-            }
-        } else {
-            const menu = document.getElementById('drawingContextMenu');
-            if (menu) menu.style.display = 'none';
+        const menu = document.getElementById('drawingContextMenu');
+        if (menu) {
+            document.getElementById('trendContextMenu').style.display = 'none';
+            document.getElementById('alertContextMenu').style.display = 'none';
+            
+            menu.style.display = 'flex';
+            menu.style.left = e.clientX + 'px';
+            menu.style.top = e.clientY + 'px';
+            
+            const copyBtn = document.getElementById('contextCopyBtn');
+            const newCopyBtn = copyBtn.cloneNode(true);
+            copyBtn.parentNode.replaceChild(newCopyBtn, copyBtn);
+            newCopyBtn.onclick = (event) => {
+                event.stopPropagation();
+                const priceText = Utils.formatPrice(hit.ray.price);
+                navigator.clipboard?.writeText(priceText);
+                menu.style.display = 'none';
+            };
+            
+            const settingsBtn = document.getElementById('contextSettingsBtn');
+            const newSettingsBtn = settingsBtn.cloneNode(true);
+            settingsBtn.parentNode.replaceChild(newSettingsBtn, settingsBtn);
+            newSettingsBtn.onclick = (event) => {
+                event.stopPropagation();
+                this._showSettings(hit.ray);
+                menu.style.display = 'none';
+            };
+            
+            const deleteBtn = document.getElementById('contextDeleteBtn');
+            const newDeleteBtn = deleteBtn.cloneNode(true);
+            deleteBtn.parentNode.replaceChild(newDeleteBtn, deleteBtn);
+            newDeleteBtn.onclick = (event) => {
+                event.stopPropagation();
+                this.deleteRay(hit.ray.id);
+                menu.style.display = 'none';
+            };
         }
+    } else {
+        const menu = document.getElementById('drawingContextMenu');
+        if (menu) menu.style.display = 'none';
     }
-
+}
    _setupEventListeners() {
     const container = this._chartManager.chartContainer;
 
