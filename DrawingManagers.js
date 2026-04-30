@@ -49,8 +49,7 @@ class HorizontalRayRenderer {
         this._chartManager = chartManager;
         this._hitArea = null;
         this._priceLabelHitArea = null;
-        this._isMac = /Mac/.test(navigator.userAgent);
-    this._pixelRatio = window.devicePixelRatio || 1;
+      
     }
 draw(target) {
          const currentKey = this._chartManager.getCurrentSymbolKey?.();
@@ -358,6 +357,8 @@ class HorizontalRayManager {
         this._setupEventListeners();
         this._setupHotkeys();
         this._autoLoadRays();
+          this._isMac = /Mac/.test(navigator.userAgent);
+    this._pixelRatio = window.devicePixelRatio || 1;
     }
 // ✅ ДОБАВЬТЕ ЭТОТ МЕТОД ПОСЛЕ КОНСТРУКТОРА:
 _autoLoadRays() {
