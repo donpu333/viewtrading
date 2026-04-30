@@ -2322,18 +2322,14 @@ class TrendLineManager {
     }
 }
     _handleDblClick(e) {
-    e.preventDefault();
-    e.stopPropagation();
-    const rect = this._chartManager.chartContainer.getBoundingClientRect();
-    let x = e.clientX - rect.left;
-    let y = e.clientY - rect.top;
-    if (this._isMac && this._pixelRatio > 1) {
-        x *= this._pixelRatio;
-        y *= this._pixelRatio;
+        e.preventDefault();
+        e.stopPropagation();
+        const rect = this._chartManager.chartContainer.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        const hit = this.hitTest(x, y);
+        if (hit) this.deleteTrendLine(hit.trendLine.id);
     }
-    const hit = this.hitTest(x, y);
-    if (hit) this.deleteTrendLine(hit.trendLine.id);
-}
     _handleKeyDown(e) {
         if (e.key === 'Delete' && this._selectedLine) { this.deleteTrendLine(this._selectedLine.id); this._selectedLine = null; }
     }
