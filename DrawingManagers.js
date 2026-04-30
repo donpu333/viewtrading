@@ -2005,64 +2005,67 @@ class TrendLineManager {
         this._requestRedraw();
     }
 
-    _handleMouseDown(e) {
-        if (e.button !== 0) return;
-        const rect = this._chartManager.chartContainer.getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const y = e.clientY - rect.top;
-        const trendMenu = document.getElementById('trendContextMenu');
-        if (trendMenu && trendMenu.style.display === 'flex') {
-            const menuRect = trendMenu.getBoundingClientRect();
-            const isClickInsideMenu = e.clientX >= menuRect.left && e.clientX <= menuRect.right && e.clientY >= menuRect.top && e.clientY <= menuRect.bottom;
-            if (isClickInsideMenu) return;
+   _handleMouseDown(e) {
+    if (e.button !== 0) return;
+    const rect = this._chartManager.chartContainer.getBoundingClientRect();
+    let x = e.clientX - rect.left;
+    let y = e.clientY - rect.top;
+    if (this._isMac && this._pixelRatio > 1) {
+        x *= this._pixelRatio;
+        y *= this._pixelRatio;
+    }
+    const trendMenu = document.getElementById('trendContextMenu');
+    if (trendMenu && trendMenu.style.display === 'flex') {
+        const menuRect = trendMenu.getBoundingClientRect();
+        const isClickInsideMenu = e.clientX >= menuRect.left && e.clientX <= menuRect.right && e.clientY >= menuRect.top && e.clientY <= menuRect.bottom;
+        if (isClickInsideMenu) return;
+    }
+    if (this._isDrawingMode && this._isDrawingSecondPoint && this._drawingStartPoint) {
+        this._completeDrawing(x, y);
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+    }
+    const hit = this.hitTest(x, y);
+    if (hit && hit.trendLine) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (this._selectedLine && this._selectedLine !== hit.trendLine) {
+            this._selectedLine.selected = false;
+            this._selectedLine.showDragPoint1 = false;
+            this._selectedLine.showDragPoint2 = false;
         }
-        if (this._isDrawingMode && this._isDrawingSecondPoint && this._drawingStartPoint) {
-            this._completeDrawing(x, y);
+        hit.trendLine.selected = true;
+        this._selectedLine = hit.trendLine;
+
+        const point1X = this._chartManager.timeToCoordinateWithFallback?.(hit.trendLine.point1.time) ?? this._chartManager.timeToCoordinate(hit.trendLine.point1.time);
+        const point1Y = this._chartManager.priceToCoordinateWithFallback?.(hit.trendLine.point1.price) ?? this._chartManager.priceToCoordinate(hit.trendLine.point1.price);
+        const point2X = this._chartManager.timeToCoordinateWithFallback?.(hit.trendLine.point2.time) ?? this._chartManager.timeToCoordinate(hit.trendLine.point2.time);
+        const point2Y = this._chartManager.priceToCoordinateWithFallback?.(hit.trendLine.point2.price) ?? this._chartManager.priceToCoordinate(hit.trendLine.point2.price);
+
+        if (point1X !== null && point1Y !== null) { hit.trendLine.dragPointX1 = point1X; hit.trendLine.dragPointY1 = point1Y; }
+        if (point2X !== null && point2Y !== null) { hit.trendLine.dragPointX2 = point2X; hit.trendLine.dragPointY2 = point2Y; }
+        hit.trendLine.showDragPoint1 = hit.type === 'point1';
+        hit.trendLine.showDragPoint2 = hit.type === 'point2';
+        this._potentialDrag = { line: hit.trendLine, pointType: hit.type, startX: x, startY: y, startPoint1: { ...hit.trendLine.point1 }, startPoint2: { ...hit.trendLine.point2 } };
+        this._requestRedraw();
+    } else {
+        if (this._isDrawingMode && !this._isDrawingSecondPoint) {
+            this._startDrawing(x, y);
             e.preventDefault();
             e.stopPropagation();
             return;
         }
-        const hit = this.hitTest(x, y);
-        if (hit && hit.trendLine) {
-            e.preventDefault();
-            e.stopPropagation();
-            if (this._selectedLine && this._selectedLine !== hit.trendLine) {
-                this._selectedLine.selected = false;
-                this._selectedLine.showDragPoint1 = false;
-                this._selectedLine.showDragPoint2 = false;
-            }
-            hit.trendLine.selected = true;
-            this._selectedLine = hit.trendLine;
-
-            const point1X = this._chartManager.timeToCoordinateWithFallback?.(hit.trendLine.point1.time) ?? this._chartManager.timeToCoordinate(hit.trendLine.point1.time);
-            const point1Y = this._chartManager.priceToCoordinateWithFallback?.(hit.trendLine.point1.price) ?? this._chartManager.priceToCoordinate(hit.trendLine.point1.price);
-            const point2X = this._chartManager.timeToCoordinateWithFallback?.(hit.trendLine.point2.time) ?? this._chartManager.timeToCoordinate(hit.trendLine.point2.time);
-            const point2Y = this._chartManager.priceToCoordinateWithFallback?.(hit.trendLine.point2.price) ?? this._chartManager.priceToCoordinate(hit.trendLine.point2.price);
-
-            if (point1X !== null && point1Y !== null) { hit.trendLine.dragPointX1 = point1X; hit.trendLine.dragPointY1 = point1Y; }
-            if (point2X !== null && point2Y !== null) { hit.trendLine.dragPointX2 = point2X; hit.trendLine.dragPointY2 = point2Y; }
-            hit.trendLine.showDragPoint1 = hit.type === 'point1';
-            hit.trendLine.showDragPoint2 = hit.type === 'point2';
-            this._potentialDrag = { line: hit.trendLine, pointType: hit.type, startX: x, startY: y, startPoint1: { ...hit.trendLine.point1 }, startPoint2: { ...hit.trendLine.point2 } };
+        if (this._selectedLine) {
+            this._selectedLine.selected = false;
+            this._selectedLine.showDragPoint1 = false;
+            this._selectedLine.showDragPoint2 = false;
+            this._selectedLine = null;
             this._requestRedraw();
-        } else {
-            if (this._isDrawingMode && !this._isDrawingSecondPoint) {
-                this._startDrawing(x, y);
-                e.preventDefault();
-                e.stopPropagation();
-                return;
-            }
-            if (this._selectedLine) {
-                this._selectedLine.selected = false;
-                this._selectedLine.showDragPoint1 = false;
-                this._selectedLine.showDragPoint2 = false;
-                this._selectedLine = null;
-                this._requestRedraw();
-            }
-            if (trendMenu) trendMenu.style.display = 'none';
         }
+        if (trendMenu) trendMenu.style.display = 'none';
     }
-
+}
     _handleMouseMove(e) {
         const rect = this._chartManager.chartContainer.getBoundingClientRect();
         const x = e.clientX - rect.left;
