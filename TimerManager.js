@@ -1,5 +1,16 @@
 // ========== ВСПОМОГАТЕЛЬНЫЕ КЛАССЫ ==========
 
+class TimerRenderer {
+    constructor(timerManager) {
+        this._timerManager = timerManager;
+        this.enabled = true;
+    }
+
+    draw(target) {
+        // Ничего не рисуем, нужно только для requestUpdate
+    }
+}
+
 class TimerPriceAxisView {
     constructor(timerManager) {
         this._timerManager = timerManager;
@@ -30,10 +41,11 @@ class TimerPriceAxisView {
 class TimerPaneView {
     constructor(timerManager) {
         this._timerManager = timerManager;
+        this._renderer = new TimerRenderer(timerManager);
     }
     
     renderer() { 
-        return null; 
+        return this._renderer; 
     }
 }
 
@@ -41,6 +53,7 @@ class TimerPrimitive {
     constructor(timerManager, chartManager) {
         this._timerManager = timerManager;
         this._chartManager = chartManager;
+        this._paneView = new TimerPaneView(timerManager);
         this._priceAxisView = new TimerPriceAxisView(timerManager);
         this._chart = null;
         this._series = null;
@@ -48,7 +61,7 @@ class TimerPrimitive {
     }
     
     paneViews() { 
-        return []; 
+        return [this._paneView]; 
     }
     
     priceAxisViews() {
@@ -72,14 +85,15 @@ class TimerPrimitive {
     }
     
     setEnabled(enabled) {
-        if (this._priceAxisView) {
-            this._priceAxisView._enabled = enabled;
-            this.requestRedraw();
+        this._priceAxisView._enabled = enabled;
+        if (this._paneView && this._paneView._renderer) {
+            this._paneView._renderer.enabled = enabled;
         }
+        this.requestRedraw();
     }
     
     isEnabled() {
-        return this._priceAxisView?._enabled ?? true;
+        return this._priceAxisView._enabled !== false;
     }
     
     updateDisplay() {
