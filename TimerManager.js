@@ -7,34 +7,81 @@ class TimerRenderer {
     }
 
     draw(target) {
-        // Ничего не рисуем, нужно только для requestUpdate
+        if (!this.enabled) return;
+        
+        target.useBitmapCoordinateSpace(scope => {
+            const ctx = scope.context;
+            const chartManager = this._timerManager._chartManager;
+            if (!chartManager) return;
+            
+            const timerText = this._timerManager._timerElement?.textContent || '';
+            if (!timerText) return;
+            
+            const activeSeries = chartManager.currentChartType === 'candle' 
+                ? chartManager.candleSeries 
+                : chartManager.barSeries;
+            
+            if (!activeSeries) return;
+            
+            const lastCandle = chartManager.getLastCandle();
+            if (!lastCandle) return;
+            
+            const yCoord = activeSeries.priceToCoordinate(lastCandle.close);
+            if (yCoord === null || yCoord === undefined) return;
+            
+            const fontSize = 11;
+            const fontFamily = "-apple-system, 'Inter', Arial, sans-serif";
+            ctx.font = `bold ${fontSize}px ${fontFamily}`;
+            const textWidth = ctx.measureText(timerText).width;
+            const paddingH = 6 * scope.horizontalPixelRatio;
+            const paddingV = 3 * scope.verticalPixelRatio;
+            const rectWidth = textWidth + paddingH * 2;
+            const rectHeight = (fontSize + paddingV * 2) * scope.verticalPixelRatio;
+            
+       const rectX = scope.mediaSize.width - rectWidth;
+            
+            const rectY = yCoord - rectHeight / 2;
+            const minY = 0;
+            const maxY = scope.mediaSize.height - rectHeight;
+            const clampedY = Math.max(minY, Math.min(maxY, rectY));
+            
+            const isBullish = lastCandle.close >= lastCandle.open;
+            const bgColor = isBullish 
+                ? (chartManager.bullishColor || '#26a69a')
+                : (chartManager.bearishColor || '#ef5350');
+            
+            ctx.save();
+            ctx.fillStyle = bgColor;
+            ctx.shadowColor = 'rgba(0, 0, 0, 0.4)';
+            ctx.shadowBlur = 3 * scope.horizontalPixelRatio;
+            ctx.shadowOffsetY = 1 * scope.verticalPixelRatio;
+            ctx.beginPath();
+            this._roundRect(ctx, rectX, clampedY, rectWidth, rectHeight, 3 * scope.horizontalPixelRatio);
+            ctx.fill();
+            
+            ctx.shadowColor = 'transparent';
+            ctx.shadowBlur = 0;
+            ctx.shadowOffsetY = 0;
+            ctx.fillStyle = '#ffffff';
+            ctx.font = `bold ${fontSize}px ${fontFamily}`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(timerText, rectX + rectWidth / 2, clampedY + rectHeight / 2);
+            ctx.restore();
+        });
     }
-}
-
-class TimerPriceAxisView {
-    constructor(timerManager) {
-        this._timerManager = timerManager;
-    }
-
-    coordinate() {
-        const chartManager = this._timerManager._chartManager;
-        if (!chartManager) return -1;
-        const lastCandle = chartManager.getLastCandle();
-        if (!lastCandle) return -1;
-        return lastCandle.close;
-    }
-
-    text() {
-        return this._timerManager._timerElement?.textContent || '';
-    }
-
-    visible() {
-        const timerText = this._timerManager._timerElement?.textContent || '';
-        return timerText.length > 0;
-    }
-
-    font() {
-        return "bold 11px -apple-system, 'Inter', Arial, sans-serif";
+    
+    _roundRect(ctx, x, y, w, h, r) {
+        r = Math.min(r, w / 2, h / 2);
+        ctx.moveTo(x + r, y);
+        ctx.lineTo(x + w - r, y);
+        ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+        ctx.lineTo(x + w, y + h - r);
+        ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+        ctx.lineTo(x + r, y + h);
+        ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+        ctx.lineTo(x, y + r);
+        ctx.quadraticCurveTo(x, y, x + r, y);
     }
 }
 
@@ -54,7 +101,6 @@ class TimerPrimitive {
         this._timerManager = timerManager;
         this._chartManager = chartManager;
         this._paneView = new TimerPaneView(timerManager);
-        this._priceAxisView = new TimerPriceAxisView(timerManager);
         this._chart = null;
         this._series = null;
         this._requestUpdate = null;
@@ -62,10 +108,6 @@ class TimerPrimitive {
     
     paneViews() { 
         return [this._paneView]; 
-    }
-    
-    priceAxisViews() {
-        return [this._priceAxisView];
     }
     
     attached({ chart, series, requestUpdate }) {
@@ -85,15 +127,14 @@ class TimerPrimitive {
     }
     
     setEnabled(enabled) {
-        this._priceAxisView._enabled = enabled;
         if (this._paneView && this._paneView._renderer) {
             this._paneView._renderer.enabled = enabled;
+            this.requestRedraw();
         }
-        this.requestRedraw();
     }
     
     isEnabled() {
-        return this._priceAxisView._enabled !== false;
+        return this._paneView?._renderer?.enabled ?? false;
     }
     
     updateDisplay() {
@@ -239,4 +280,4 @@ class TimerManager {
 
 if (typeof window !== 'undefined') {
     window.TimerManager = TimerManager;
-}
+} найди способ прикрутить это
