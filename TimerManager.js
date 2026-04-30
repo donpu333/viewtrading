@@ -38,7 +38,15 @@ class TimerRenderer {
             const rectWidth = textWidth + paddingH * 2;
             const rectHeight = (fontSize + paddingV * 2) * scope.verticalPixelRatio;
             
-       const rectX = scope.mediaSize.width - rectWidth;
+              const timeScale = chartManager.chart.timeScale();
+            const visibleLogicalRange = timeScale.getVisibleLogicalRange();
+            const rightX = timeScale.logicalToCoordinate(visibleLogicalRange?.to);
+            let rectX;
+            if (rightX !== null && rightX !== undefined) {
+                rectX = rightX - rectWidth - 4 * scope.horizontalPixelRatio;
+            } else {
+                rectX = scope.mediaSize.width - rectWidth - 4 * scope.horizontalPixelRatio;
+            }
             
             const rectY = yCoord - rectHeight / 2;
             const minY = 0;
