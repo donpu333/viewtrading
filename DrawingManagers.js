@@ -208,7 +208,7 @@ hitTest(x, y) {
     
     if (this._hitArea) {
         if (isMac) {
-            const buffer = 30;
+            const buffer = 10;
             const inY = Math.abs(y - this._hitArea.y - this._hitArea.height / 2) < (this._hitArea.height / 2 + buffer);
             const pixelRatio = window.devicePixelRatio || 1;
             const chartWidth = (this._chartManager?.chartContainer?.offsetWidth || 426) * pixelRatio;
