@@ -38,15 +38,10 @@ class TimerRenderer {
             const rectWidth = textWidth + paddingH * 2;
             const rectHeight = (fontSize + paddingV * 2) * scope.verticalPixelRatio;
             
-              const timeScale = chartManager.chart.timeScale();
-            const visibleLogicalRange = timeScale.getVisibleLogicalRange();
-            const rightX = timeScale.logicalToCoordinate(visibleLogicalRange?.to);
-            let rectX;
-            if (rightX !== null && rightX !== undefined) {
-                rectX = rightX - rectWidth - 4 * scope.horizontalPixelRatio;
-            } else {
-                rectX = scope.mediaSize.width - rectWidth - 4 * scope.horizontalPixelRatio;
-            }
+           // Получаем точную координату правого края графика
+const priceScale = chartManager.chart.priceScale('right');
+const priceScaleWidth = priceScale ? priceScale.width() : 70;
+const rectX = scope.mediaSize.width + priceScaleWidth * scope.horizontalPixelRatio - rectWidth - 4 * scope.horizontalPixelRatio;
             
             const rectY = yCoord - rectHeight / 2;
             const minY = 0;
