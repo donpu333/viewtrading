@@ -205,20 +205,24 @@ class HorizontalRayRenderer {
         ctx.quadraticCurveTo(x, y, x + r, y);
     }
 
-    hitTest(x, y) {
-        if (this._hitArea) {
-            const buffer = 10;
-            const inY = Math.abs(y - this._hitArea.y - this._hitArea.height / 2) < (this._hitArea.height / 2 + buffer);
-            const inX = x >= this._hitArea.x1 - buffer && x <= this._hitArea.x2 + buffer;
-            if (inX && inY) return 'line';
-        }
-        if (this._priceLabelHitArea) {
-            const inX = x >= this._priceLabelHitArea.x && x <= this._priceLabelHitArea.x + this._priceLabelHitArea.width;
-            const inY = y >= this._priceLabelHitArea.y && y <= this._priceLabelHitArea.y + this._priceLabelHitArea.height;
-            if (inX && inY) return 'label';
-        }
-        return null;
+    // ЭТО В КЛАССЕ HorizontalRayRenderer, метод hitTest
+hitTest(x, y) {
+    const isMac = /Mac/.test(navigator.userAgent);
+    const buffer = isMac ? 20 : 10;
+    
+    if (this._hitArea) {
+        const inY = Math.abs(y - this._hitArea.y - this._hitArea.height / 2) < (this._hitArea.height / 2 + buffer);
+        const inX = x >= this._hitArea.x1 - buffer && x <= this._hitArea.x2 + buffer;
+        if (inX && inY) return 'line';
     }
+    if (this._priceLabelHitArea) {
+        const padding = isMac ? 15 : 0;
+        const inX = x >= this._priceLabelHitArea.x - padding && x <= this._priceLabelHitArea.x + this._priceLabelHitArea.width + padding;
+        const inY = y >= this._priceLabelHitArea.y - padding && y <= this._priceLabelHitArea.y + this._priceLabelHitArea.height + padding;
+        if (inX && inY) return 'label';
+    }
+    return null;
+}
 }
 
 class HorizontalRayPaneView {
