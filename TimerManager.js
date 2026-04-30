@@ -8,10 +8,8 @@ class TimerPriceAxisView {
     coordinate() {
         const chartManager = this._timerManager._chartManager;
         if (!chartManager) return -1;
-        
         const lastCandle = chartManager.getLastCandle();
         if (!lastCandle) return -1;
-        
         return lastCandle.close;
     }
 
@@ -19,27 +17,7 @@ class TimerPriceAxisView {
         return this._timerManager._timerElement?.textContent || '';
     }
 
-    color() {
-        const chartManager = this._timerManager._chartManager;
-        if (!chartManager) return '#ffffff';
-        
-        const lastCandle = chartManager.getLastCandle();
-        if (!lastCandle) return '#ffffff';
-        
-        const isBullish = lastCandle.close >= lastCandle.open;
-        return isBullish 
-            ? (chartManager.bullishColor || '#26a69a')
-            : (chartManager.bearishColor || '#ef5350');
-    }
-
-    textColor() {
-        return '#ffffff';
-    }
-
     visible() {
-        const chartManager = this._timerManager._chartManager;
-        if (!chartManager) return false;
-        
         const timerText = this._timerManager._timerElement?.textContent || '';
         return timerText.length > 0;
     }
