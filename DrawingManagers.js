@@ -1544,13 +1544,7 @@ class TrendLineRenderer {
             this._lastValidPoint2 = { x: point2X, y: point2Y };
         }
 
-        // ===== ТОЛЬКО ДЛЯ MAC — КОРРЕКТИРУЕМ КООРДИНАТЫ =====
-        if (this._isMac && this._pixelRatio > 1) {
-            point1X *= this._pixelRatio;
-            point1Y *= this._pixelRatio;
-            point2X *= this._pixelRatio;
-            point2Y *= this._pixelRatio;
-        }
+        
 
         const { position: x1 } = positionsLine(point1X, scope.horizontalPixelRatio, 1, true);
         const { position: y1, length: y1Length } = positionsLine(point1Y, scope.verticalPixelRatio, line.options.lineWidth, false);
@@ -2845,12 +2839,7 @@ class RulerLineRenderer {
 
             if (point1X === null || point1Y === null || point2X === null || point2Y === null) return;
 
-            if (this._isMac && this._pixelRatio > 1) {
-                point1X *= this._pixelRatio;
-                point1Y *= this._pixelRatio;
-                point2X *= this._pixelRatio;
-                point2Y *= this._pixelRatio;
-            }
+           
 
             const { position: x1 } = positionsLine(point1X, scope.horizontalPixelRatio, 1, true);
             const { position: y1, length: y1Length } = positionsLine(point1Y, scope.verticalPixelRatio, ruler.options.lineWidth, false);
@@ -4148,10 +4137,7 @@ class AlertLineRenderer {
             let xCoordinate = chartManager.timeToCoordinate(alert.time);
             if (yCoordinate === null || xCoordinate === null) return;
 
-            if (this._isMac && this._pixelRatio > 1) {
-                xCoordinate *= this._pixelRatio;
-                yCoordinate *= this._pixelRatio;
-            }
+            
 
             const timeScale = chartManager.chart.timeScale();
             const visibleRange = timeScale.getVisibleLogicalRange();
