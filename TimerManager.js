@@ -4,10 +4,13 @@ class TimerRenderer {
     constructor(timerManager) {
         this._timerManager = timerManager;
         this.enabled = true;
+        this._tick = 0;
     }
 
     draw(target) {
         if (!this.enabled) return;
+        
+        const forceUpdate = this._tick;
         
         target.useBitmapCoordinateSpace(scope => {
             const ctx = scope.context;
@@ -38,12 +41,8 @@ class TimerRenderer {
             const rectWidth = textWidth + paddingH * 2;
             const rectHeight = (fontSize + paddingV * 2) * scope.verticalPixelRatio;
             
-            // === ГЛАВНОЕ ИСПРАВЛЕНИЕ ДЛЯ X ===
-            // Не используем width шкалы для рисования ВНУТРИ canvas.
-            // Рисуем ПРЯМО У ПРАВОГО КРАЯ графика.
             const rectX = scope.mediaSize.width - rectWidth;
             
-            // === ИСПРАВЛЕНИЕ ДЛЯ Y ===
             const rectY = yCoord - rectHeight / 2;
             const minY = 0;
             const maxY = scope.mediaSize.height - rectHeight;
@@ -178,6 +177,7 @@ class TimerManager {
                 
                 series.subscribeDataChanged(() => {
                     if (this._primitive && this._primitive.isEnabled()) {
+                        this._primitive._paneView._renderer._tick++;
                         this._primitive.requestRedraw();
                     }
                 });
@@ -208,37 +208,41 @@ class TimerManager {
         this._interval = setInterval(() => this._updateTimer(), 250);
     }
 
-  _updateTimer() {
-    if (this._isDayTimeframe(this._currentTf)) {
-        this._timerElement.textContent = '';
-        if (this._primitive) this._primitive.setEnabled(false);
-        return;
+    _updateTimer() {
+        if (this._isDayTimeframe(this._currentTf)) {
+            this._timerElement.textContent = '';
+            if (this._primitive) this._primitive.setEnabled(false);
+            return;
+        }
+        
+        const duration = TF_DURATIONS[this._currentTf];
+        if (!duration) return;
+        
+        const now = Date.now();
+        const moscowNow = Utils.toMoscowTime(now).getTime();
+        const msSinceEpoch = moscowNow % duration;
+        const timeLeft = duration - msSinceEpoch;
+        
+        const newText = Utils.formatTimeRemaining(timeLeft);
+        
+        this._timerElement.textContent = newText;
+        
+        if (this._primitive && this._primitive._paneView && this._primitive._paneView._renderer) {
+            this._primitive._paneView._renderer._tick++;
+            this._primitive.requestRedraw();
+        }
+        
+        if (this._chartManager && this._chartManager.chart) {
+            const chart = this._chartManager.chart;
+            const opts = chart.options();
+            chart.applyOptions({ 
+                rightPriceScale: { 
+                    visible: opts.rightPriceScale.visible 
+                } 
+            });
+        }
     }
-    
-    const duration = TF_DURATIONS[this._currentTf];
-    if (!duration) return;
-    
-    const now = Date.now();
-    const moscowNow = Utils.toMoscowTime(now).getTime();
-    const msSinceEpoch = moscowNow % duration;
-    const timeLeft = duration - msSinceEpoch;
-    
-    const newText = Utils.formatTimeRemaining(timeLeft);
-    
-    this._timerElement.textContent = newText;
-    
-    // Принудительная перерисовка ВСЕГО графика
-    if (this._chartManager && this._chartManager.chart) {
-        const chart = this._chartManager.chart;
-        const opts = chart.options();
-        // Меняем туда-сюда свойство, которое точно триггерит полный ререндер
-        chart.applyOptions({ 
-            rightPriceScale: { 
-                visible: opts.rightPriceScale.visible 
-            } 
-        });
-    }
-}
+
     stop() {
         if (this._interval) {
             clearInterval(this._interval);
