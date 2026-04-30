@@ -3,7 +3,7 @@ class DailySeparator {
         this._cm = chartManager;
         this._primitive = null;
         this._requestUpdate = null;
-        this._interval = null; // для принудительного обновления
+        this._interval = null;
         
         const saved = localStorage.getItem('separatorSettings');
         if (saved) {
@@ -20,11 +20,6 @@ class DailySeparator {
             this._lineWidth = 1;
             this._opacity = 0.3;
         }
-        
-        // Проверка на Mac с Retina
-        const isMac = /Macintosh/.test(navigator.userAgent);
-        const isRetina = window.devicePixelRatio > 1;
-        this._forceRedraw = isMac && isRetina;
         
         setTimeout(() => this._attach(), 1000);
     }
@@ -60,19 +55,6 @@ class DailySeparator {
         };
         
         series.attachPrimitive(this._primitive);
-        
-        // Принудительная перерисовка для Mac
-        if (this._forceRedraw) {
-            this._interval = setInterval(() => {
-                if (this._cm && this._cm.chart) {
-                    const opts = this._cm.chart.options();
-                    this._cm.chart.applyOptions({ 
-                        rightPriceScale: { visible: opts.rightPriceScale.visible } 
-                    });
-                }
-            }, 1000);
-        }
-        
         console.log('✅ DailySeparator: примитив прикреплён');
     }
     
@@ -143,22 +125,15 @@ class DailySeparator {
     }
     
     redraw() {
-        if (this._primitive && this._primitive.requestRedraw) {
-            this._primitive.requestRedraw();
-        }
-        // Принудительно для Mac
-        if (this._forceRedraw && this._cm && this._cm.chart) {
-            const opts = this._cm.chart.options();
-            this._cm.chart.applyOptions({ 
-                rightPriceScale: { visible: opts.rightPriceScale.visible } 
-            });
-        }
-    }
-    
-    destroy() {
-        if (this._interval) {
-            clearInterval(this._interval);
-            this._interval = null;
+        if (this._cm && this._cm.chart) {
+            if (this._cm.chart.draw) {
+                this._cm.chart.draw();
+            } else {
+                const opts = this._cm.chart.options();
+                this._cm.chart.applyOptions({ 
+                    rightPriceScale: { visible: opts.rightPriceScale.visible } 
+                });
+            }
         }
     }
 }
