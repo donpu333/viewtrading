@@ -3,7 +3,6 @@ class DailySeparator {
         this._cm = chartManager;
         this._primitive = null;
         this._requestUpdate = null;
-        this._interval = null;
         
         const saved = localStorage.getItem('separatorSettings');
         if (saved) {
@@ -41,11 +40,19 @@ class DailySeparator {
         this._primitive = {
             paneViews: () => [{
                 renderer: () => ({
-                    draw: (target) => self._draw(target)
+                    draw: (target) => self._draw(target, series)
                 })
             }],
             attached: ({ requestUpdate }) => {
                 self._requestUpdate = requestUpdate;
+                
+                // Подписываемся на скролл графика
+                const timeScale = self._cm.chart.timeScale();
+                if (timeScale && timeScale.subscribeVisibleLogicalRangeChange) {
+                    timeScale.subscribeVisibleLogicalRangeChange(() => {
+                        if (self._requestUpdate) self._requestUpdate();
+                    });
+                }
             },
             detached: () => {},
             updateAllViews: () => {},
@@ -58,7 +65,7 @@ class DailySeparator {
         console.log('✅ DailySeparator: примитив прикреплён');
     }
     
-    _draw(target) {
+    _draw(target, series) {
         if (!this._enabled) return;
         
         const tf = this._cm.currentInterval;
@@ -69,6 +76,7 @@ class DailySeparator {
         
         target.useBitmapCoordinateSpace(scope => {
             const ctx = scope.context;
+            
             let prevDay = null;
             
             data.forEach(candle => {
@@ -78,7 +86,7 @@ class DailySeparator {
                     const timeScale = this._cm.chart.timeScale();
                     const x = timeScale.timeToCoordinate(candle.time);
                     
-                    if (x !== null && x > 0 && x < scope.mediaSize.width) {
+                    if (x !== null) {
                         ctx.save();
                         ctx.strokeStyle = this._hexToRgba(this._color, this._opacity);
                         ctx.lineWidth = this._lineWidth * scope.horizontalPixelRatio;
@@ -88,6 +96,7 @@ class DailySeparator {
                         else ctx.setLineDash([]);
                         
                         ctx.beginPath();
+                        // Отрисовка от начала до бесконечности (от 0 до высоты canvas)
                         ctx.moveTo(x, 0);
                         ctx.lineTo(x, scope.mediaSize.height);
                         ctx.stroke();
@@ -125,15 +134,8 @@ class DailySeparator {
     }
     
     redraw() {
-        if (this._cm && this._cm.chart) {
-            if (this._cm.chart.draw) {
-                this._cm.chart.draw();
-            } else {
-                const opts = this._cm.chart.options();
-                this._cm.chart.applyOptions({ 
-                    rightPriceScale: { visible: opts.rightPriceScale.visible } 
-                });
-            }
+        if (this._primitive && this._primitive.requestRedraw) {
+            this._primitive.requestRedraw();
         }
     }
 }
