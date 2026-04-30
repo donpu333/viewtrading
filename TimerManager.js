@@ -1,16 +1,13 @@
-// ========== ВСПОМОГАТЕЛЬНЫЕ КЛАССЫ ==========
+
 
 class TimerRenderer {
     constructor(timerManager) {
         this._timerManager = timerManager;
         this.enabled = true;
-        this._tick = 0;
     }
 
     draw(target) {
         if (!this.enabled) return;
-        
-        const forceUpdate = this._tick;
         
         target.useBitmapCoordinateSpace(scope => {
             const ctx = scope.context;
@@ -41,7 +38,10 @@ class TimerRenderer {
             const rectWidth = textWidth + paddingH * 2;
             const rectHeight = (fontSize + paddingV * 2) * scope.verticalPixelRatio;
             
-            const rectX = scope.mediaSize.width - rectWidth;
+           // Получаем точную координату правого края графика
+const priceScale = chartManager.chart.priceScale('right');
+const priceScaleWidth = priceScale ? priceScale.width() : 70;
+const rectX = scope.mediaSize.width + priceScaleWidth * scope.horizontalPixelRatio - rectWidth - 4 * scope.horizontalPixelRatio;
             
             const rectY = yCoord - rectHeight / 2;
             const minY = 0;
@@ -177,7 +177,6 @@ class TimerManager {
                 
                 series.subscribeDataChanged(() => {
                     if (this._primitive && this._primitive.isEnabled()) {
-                        this._primitive._paneView._renderer._tick++;
                         this._primitive.requestRedraw();
                     }
                 });
@@ -225,21 +224,17 @@ class TimerManager {
         
         const newText = Utils.formatTimeRemaining(timeLeft);
         
-        this._timerElement.textContent = newText;
-        
-        if (this._primitive && this._primitive._paneView && this._primitive._paneView._renderer) {
-            this._primitive._paneView._renderer._tick++;
-            this._primitive.requestRedraw();
-        }
-        
-        if (this._chartManager && this._chartManager.chart) {
-            const chart = this._chartManager.chart;
-            const opts = chart.options();
-            chart.applyOptions({ 
-                rightPriceScale: { 
-                    visible: opts.rightPriceScale.visible 
-                } 
-            });
+        if (this._timerElement.textContent !== newText) {
+            this._timerElement.textContent = newText;
+            if (this._primitive) {
+                if (!this._primitive.isEnabled()) {
+                    this._primitive.setEnabled(true);
+                }
+               if (this._chartManager && this._chartManager.chart) {
+    const currentWidth = this._chartManager.chart.options().width;
+    this._chartManager.chart.applyOptions({ width: currentWidth });
+}
+            }
         }
     }
 
