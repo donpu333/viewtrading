@@ -425,7 +425,7 @@ _autoLoadRays() {
     const rect = this._chartManager.chartContainer.getBoundingClientRect();
     let x = e.clientX - rect.left;
     let y = e.clientY - rect.top;
-    if (this._isMac && this._pixelRatio > 3) {
+    if (this._isMac && this._pixelRatio > 1) {
         x *= this._pixelRatio;
         y *= this._pixelRatio;
     }
@@ -505,7 +505,7 @@ _autoLoadRays() {
         const rect = container.getBoundingClientRect();
         let x = e.clientX - rect.left;
         let y = e.clientY - rect.top;
-        if (this._isMac && this._pixelRatio > 3) {
+        if (this._isMac && this._pixelRatio > 1) {
             x *= this._pixelRatio;
             y *= this._pixelRatio;
         }
@@ -584,7 +584,7 @@ _autoLoadRays() {
         const rect = container.getBoundingClientRect();
         let x = e.clientX - rect.left;
         let y = e.clientY - rect.top;
-        if (this._isMac && this._pixelRatio > 3) {
+        if (this._isMac && this._pixelRatio > 1) {
             x *= this._pixelRatio;
             y *= this._pixelRatio;
         }
@@ -743,7 +743,7 @@ _autoLoadRays() {
         const rect = container.getBoundingClientRect();
         let x = e.clientX - rect.left;
         let y = e.clientY - rect.top;
-        if (this._isMac && this._pixelRatio > 3) {
+        if (this._isMac && this._pixelRatio > 1) {
             x *= this._pixelRatio;
             y *= this._pixelRatio;
         }
