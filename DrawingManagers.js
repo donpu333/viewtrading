@@ -2752,7 +2752,6 @@ _completeDrawing(x, y) {
     }
 }
                
-// ========== ЛИНЕЙКА-ИЗМЕРИТЕЛЬ (ИСПРАВЛЕННАЯ - НЕ ПРОПАДАЕТ ПРИ СМЕНЕ ТАЙМФРЕЙМА) ==========
 class RulerLine {
     constructor(point1, point2, chartManager, options = {}) {
         this.id = `ruler_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -2825,11 +2824,9 @@ class RulerLineRenderer {
         this._hitAreaPoint1 = null;
         this._hitAreaPoint2 = null;
         this._hitAreaInfo = null;
-        this._isMac = /Mac/.test(navigator.userAgent);
-        this._pixelRatio = window.devicePixelRatio || 1;
     }
 
-     draw(target) {
+    draw(target) {
          const currentKey = this._chartManager.getCurrentSymbolKey?.();
     if (currentKey && this._ruler.symbolKey !== currentKey) return;
         target.useBitmapCoordinateSpace(scope => {
@@ -2981,7 +2978,6 @@ class RulerLineRenderer {
         });
     }
 
-
     _roundRect(ctx, x, y, w, h, r) {
         if (w < 2 * r) r = w / 2;
         if (h < 2 * r) r = h / 2;
@@ -2997,24 +2993,24 @@ class RulerLineRenderer {
     }
 
     hitTest(x, y) {
-        const mac = this._isMac && this._pixelRatio > 1;
-        
         if (this._hitAreaPoint1) {
-            const radius = mac ? 20 : 10;
             const dx = x - this._hitAreaPoint1.x;
             const dy = y - this._hitAreaPoint1.y;
             const distance = Math.sqrt(dx*dx + dy*dy);
-            if (distance < radius) return { type: 'point1', ruler: this._ruler };
+            if (distance < this._hitAreaPoint1.radius) {
+                return { type: 'point1', ruler: this._ruler };
+            }
         }
         if (this._hitAreaPoint2) {
-            const radius = mac ? 20 : 10;
             const dx = x - this._hitAreaPoint2.x;
             const dy = y - this._hitAreaPoint2.y;
             const distance = Math.sqrt(dx*dx + dy*dy);
-            if (distance < radius) return { type: 'point2', ruler: this._ruler };
+            if (distance < this._hitAreaPoint2.radius) {
+                return { type: 'point2', ruler: this._ruler };
+            }
         }
         if (this._hitAreaLine) {
-            const buffer = mac ? 25 : 15;
+            const buffer = 15;
             const x1 = this._hitAreaLine.x1, y1 = this._hitAreaLine.y1;
             const x2 = this._hitAreaLine.x2, y2 = this._hitAreaLine.y2;
 
@@ -3265,13 +3261,12 @@ class RulerLinePrimitive {
 
 class RulerLineManager {
     constructor(chartManager) {
-        this._isMac = /Mac/.test(navigator.userAgent);
-        this._pixelRatio = window.devicePixelRatio || 1;
         this._rulers = [];
         this._chartManager = chartManager;
         this._selectedRuler = null;
         this._hoveredRuler = null;
         this._isDrawingMode = false;
+       
         this._isDragging = false;
         this._dragRuler = null;
         this._dragPoint = null;
@@ -3289,7 +3284,6 @@ class RulerLineManager {
         this._tempPoint = null;
         this._tempLinePrimitive = null;
         this._tempPointPrimitive = null;
-        this._magnetEnabled = true;
 
         this._handleMouseDown = this._handleMouseDown.bind(this);
         this._handleMouseMove = this._handleMouseMove.bind(this);
@@ -3316,26 +3310,13 @@ class RulerLineManager {
 
         container.addEventListener('mousemove', (e) => {
             const rect = container.getBoundingClientRect();
-            let mx = e.clientX - rect.left;
-            let my = e.clientY - rect.top;
-            if (this._isMac && this._pixelRatio > 1) {
-                mx *= this._pixelRatio;
-                my *= this._pixelRatio;
-            }
-            this._lastMouseX = mx;
-            this._lastMouseY = my;
+            this._lastMouseX = e.clientX - rect.left;
+            this._lastMouseY = e.clientY - rect.top;
         });
     }
 
     _setupHotkeys() {
         document.addEventListener('keydown', this._handleKeyDown);
-    }
-
-    _getCurrentSymbolKey() {
-        const symbol = this._chartManager.currentSymbol || 'BTCUSDT';
-        const exchange = this._chartManager.currentExchange || 'binance';
-        const marketType = this._chartManager.currentMarketType || 'futures';
-        return `${symbol}:${exchange}:${marketType}`;
     }
 
     setDrawingMode(enabled) {
@@ -3370,7 +3351,12 @@ class RulerLineManager {
             this._requestRedraw();
         }
     }
-
+_getCurrentSymbolKey() {
+    const symbol = this._chartManager.currentSymbol || 'BTCUSDT';
+    const exchange = this._chartManager.currentExchange || 'binance';
+    const marketType = this._chartManager.currentMarketType || 'futures';
+    return `${symbol}:${exchange}:${marketType}`;
+}
     setMagnetEnabled(enabled) {
         this._magnetEnabled = enabled;
         const magnetBtn = document.getElementById('toolMagnet');
@@ -3381,85 +3367,90 @@ class RulerLineManager {
     }
 
     createRuler(point1, point2, options = {}) {
-        const defaultVisibility = {
-            '1m': true, '3m': true, '5m': true, '15m': true, '30m': true,
-            '1h': true, '4h': true, '6h': true, '12h': true,
-            '1d': true, '1w': true, '1M': true
-        };
-        const timeframeVisibility = options.timeframeVisibility || defaultVisibility;
+    const defaultVisibility = {
+        '1m': true, '3m': true, '5m': true, '15m': true, '30m': true,
+        '1h': true, '4h': true, '6h': true, '12h': true,
+        '1d': true, '1w': true, '1M': true
+    };
+    const timeframeVisibility = options.timeframeVisibility || defaultVisibility;
 
-        const ruler = new RulerLine(point1, point2, this._chartManager, {
-            ...options,
-            timeframeVisibility
-        });
+    const ruler = new RulerLine(point1, point2, this._chartManager, {
+        ...options,
+        timeframeVisibility
+    });
+    
+    ruler.anchorTime1 = point1.time;
+    ruler.anchorTime2 = point2.time;
+
+    // ========== ДОБАВЛЕНО (как в луче) ==========
+    ruler.symbolKey = this._getCurrentSymbolKey();
+    ruler.symbol = this._chartManager.currentSymbol;
+    ruler.exchange = this._chartManager.currentExchange;
+    ruler.marketType = this._chartManager.currentMarketType;
+    // ============================================
+
+    const primitive = new RulerLinePrimitive(ruler, this._chartManager);
+    const series = this._chartManager.currentChartType === 'candle'
+        ? this._chartManager.candleSeries
+        : this._chartManager.barSeries;
+    series.attachPrimitive(primitive);
+    this._rulers.push({ ruler, primitive, series });
+    this._saveRulers();
+    return ruler;
+}
+
+ deleteRuler(rulerId) {
+    const index = this._rulers.findIndex(r => r.ruler.id === rulerId);
+    if (index !== -1) {
+        const { primitive, series } = this._rulers[index];
         
-        ruler.anchorTime1 = point1.time;
-        ruler.anchorTime2 = point2.time;
-        ruler.symbolKey = this._getCurrentSymbolKey();
-        ruler.symbol = this._chartManager.currentSymbol;
-        ruler.exchange = this._chartManager.currentExchange;
-        ruler.marketType = this._chartManager.currentMarketType;
-
-        const primitive = new RulerLinePrimitive(ruler, this._chartManager);
-        const series = this._chartManager.currentChartType === 'candle'
-            ? this._chartManager.candleSeries
-            : this._chartManager.barSeries;
-        series.attachPrimitive(primitive);
-        this._rulers.push({ ruler, primitive, series });
-        this._saveRulers();
-        return ruler;
-    }
-
-    deleteRuler(rulerId) {
-        const index = this._rulers.findIndex(r => r.ruler.id === rulerId);
-        if (index !== -1) {
-            const { primitive, series } = this._rulers[index];
-            window.db.delete('drawings', rulerId).catch(e => console.warn(e));
-            try { series.detachPrimitive(primitive); } catch (e) {}
-            this._rulers.splice(index, 1);
-            if (this._selectedRuler && this._selectedRuler.id === rulerId) this._selectedRuler = null;
-            if (this._dragRuler && this._dragRuler.id === rulerId) this._dragRuler = null;
-            this._saveRulers();
-            this._requestRedraw();
-            return true;
-        }
-        return false;
-    }
-
-    deleteAllRulers() {
-        for (const item of this._rulers) {
-            window.db.delete('drawings', item.ruler.id).catch(e => console.warn(e));
-        }
-        this._rulers.forEach(({ primitive, series }) => {
-            try { series.detachPrimitive(primitive); } catch (e) {}
-        });
-        this._rulers = [];
-        this._selectedRuler = null;
-        this._dragRuler = null;
+        // ========== ДОБАВИТЬ УДАЛЕНИЕ ИЗ БД ==========
+        window.db.delete('drawings', rulerId).catch(e => console.warn(e));
+        // ============================================
+        
+        try { series.detachPrimitive(primitive); } catch (e) {}
+        this._rulers.splice(index, 1);
+        if (this._selectedRuler && this._selectedRuler.id === rulerId) this._selectedRuler = null;
+        if (this._dragRuler && this._dragRuler.id === rulerId) this._dragRuler = null;
         this._saveRulers();
         this._requestRedraw();
+        return true;
     }
-
-    hitTest(x, y) {
-        for (const item of this._rulers) {
-            if (!item.primitive) continue;
-            try {
-                const hit = item.primitive._paneView._renderer.hitTest(x, y);
-                if (hit) return hit;
-            } catch (e) {}
-        }
-        return null;
+    return false;
+}
+deleteAllRulers() {
+    // ========== ДОБАВИТЬ УДАЛЕНИЕ ВСЕХ ИЗ БД ==========
+    for (const item of this._rulers) {
+        window.db.delete('drawings', item.ruler.id).catch(e => console.warn(e));
     }
+    // ===================================================
+    
+    this._rulers.forEach(({ primitive, series }) => {
+        try { series.detachPrimitive(primitive); } catch (e) {}
+    });
+    this._rulers = [];
+    this._selectedRuler = null;
+    this._dragRuler = null;
+    this._saveRulers();
+    this._requestRedraw();
+}
+   hitTest(x, y) {
+    for (const item of this._rulers) {
+        if (!item.primitive) continue;  // ← добавить эту строку
+        try {
+            const hit = item.primitive._paneView._renderer.hitTest(x, y);
+            if (hit) return hit;
+        } catch (e) {}
+    }
+    return null;
+}
 
     _handleMouseDown(e) {
         if (e.button !== 0) return;
+
         const rect = this._chartManager.chartContainer.getBoundingClientRect();
-        let x = e.clientX - rect.left;
-        let y = e.clientY - rect.top;
-        if (this._isMac && this._pixelRatio > 1) {
-            x *= this._pixelRatio;
-            y *= this._pixelRatio;
-        }
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
 
         const rulerMenu = document.getElementById('rulerContextMenu');
         if (rulerMenu && rulerMenu.style.display === 'flex') {
@@ -3478,16 +3469,20 @@ class RulerLineManager {
         }
 
         const hit = this.hitTest(x, y);
+
         if (hit && hit.ruler) {
             e.preventDefault();
             e.stopPropagation();
+
             if (this._selectedRuler && this._selectedRuler !== hit.ruler) {
                 this._selectedRuler.selected = false;
                 this._selectedRuler.showDragPoint1 = false;
                 this._selectedRuler.showDragPoint2 = false;
             }
+
             hit.ruler.selected = true;
             this._selectedRuler = hit.ruler;
+
             if (hit.type === 'point1' || hit.type === 'point2') {
                 hit.ruler.showDragPoint1 = hit.type === 'point1';
                 hit.ruler.showDragPoint2 = hit.type === 'point2';
@@ -3495,10 +3490,12 @@ class RulerLineManager {
                 hit.ruler.showDragPoint1 = false;
                 hit.ruler.showDragPoint2 = false;
             }
+
             const point1X = this._chartManager.timeToCoordinate(hit.ruler.point1.time);
             const point1Y = this._chartManager.priceToCoordinate(hit.ruler.point1.price);
             const point2X = this._chartManager.timeToCoordinate(hit.ruler.point2.time);
             const point2Y = this._chartManager.priceToCoordinate(hit.ruler.point2.price);
+
             if (point1X !== null && point1Y !== null) {
                 hit.ruler.dragPointX1 = point1X;
                 hit.ruler.dragPointY1 = point1Y;
@@ -3507,6 +3504,7 @@ class RulerLineManager {
                 hit.ruler.dragPointX2 = point2X;
                 hit.ruler.dragPointY2 = point2Y;
             }
+
             this._potentialDrag = {
                 ruler: hit.ruler,
                 pointType: hit.type,
@@ -3515,6 +3513,7 @@ class RulerLineManager {
                 startPoint1: { ...hit.ruler.point1 },
                 startPoint2: { ...hit.ruler.point2 }
             };
+
             this._requestRedraw();
         } else {
             if (this._isDrawingMode && !this._isDrawingSecondPoint) {
@@ -3523,6 +3522,7 @@ class RulerLineManager {
                 e.stopPropagation();
                 return;
             }
+
             if (this._selectedRuler) {
                 this._selectedRuler.selected = false;
                 this._selectedRuler.showDragPoint1 = false;
@@ -3530,157 +3530,168 @@ class RulerLineManager {
                 this._selectedRuler = null;
                 this._requestRedraw();
             }
+
             if (rulerMenu) rulerMenu.style.display = 'none';
         }
     }
+_handleMouseMove(e) {
+    const rect = this._chartManager.chartContainer.getBoundingClientRect();
+    let x = e.clientX - rect.left;
+    let y = e.clientY - rect.top;
+    if (this._isMac && this._pixelRatio > 1) {
+        x *= this._pixelRatio;
+        y *= this._pixelRatio;
+    }
 
-    _handleMouseMove(e) {
-        const rect = this._chartManager.chartContainer.getBoundingClientRect();
-        let x = e.clientX - rect.left;
-        let y = e.clientY - rect.top;
-        if (this._isMac && this._pixelRatio > 1) {
-            x *= this._pixelRatio;
-            y *= this._pixelRatio;
-        }
-        this._lastMouseX = x;
-        this._lastMouseY = y;
+    this._lastMouseX = x;
+    this._lastMouseY = y;
 
-        if (this._isDrawingMode && this._isDrawingSecondPoint && this._drawingStartPoint) {
-            let price = this._chartManager.coordinateToPrice(y);
-            let time = this._chartManager.coordinateToTime(x);
-            if (price !== null && time !== null) {
-                if (!this._tempLine) {
-                    this._tempLine = { point1: this._drawingStartPoint, point2: { price, time } };
-                    if (!this._tempLinePrimitive) {
-                        this._tempLinePrimitive = new TempRulerLinePrimitive(this);
-                        const series = this._chartManager.currentChartType === 'candle' ? this._chartManager.candleSeries : this._chartManager.barSeries;
-                        if (series) series.attachPrimitive(this._tempLinePrimitive);
-                    }
-                } else {
-                    this._tempLine.point2 = { price, time };
+    // Временная линия при рисовании
+    if (this._isDrawingMode && this._isDrawingSecondPoint && this._drawingStartPoint) {
+        let price = this._chartManager.coordinateToPrice(y);
+        let time = this._chartManager.coordinateToTime(x);
+        
+        if (price !== null && time !== null) {
+            if (!this._tempLine) {
+                this._tempLine = { 
+                    point1: this._drawingStartPoint, 
+                    point2: { price, time } 
+                };
+                if (!this._tempLinePrimitive) {
+                    this._tempLinePrimitive = new TempRulerLinePrimitive(this);
+                    const series = this._chartManager.currentChartType === 'candle' ? this._chartManager.candleSeries : this._chartManager.barSeries;
+                    if (series) series.attachPrimitive(this._tempLinePrimitive);
                 }
-                this._requestRedraw();
-            }
-            return;
-        }
-
-        if (this._potentialDrag && !this._isDragging) {
-            const dx = Math.abs(x - this._potentialDrag.startX);
-            const dy = Math.abs(y - this._potentialDrag.startY);
-            if (dx > 3 || dy > 3) {
-                this._isDragging = true;
-                this._dragRuler = this._potentialDrag.ruler;
-                this._dragPoint = this._potentialDrag.pointType;
-                this._dragRuler.dragging = true;
-                this._dragStartX = this._potentialDrag.startX;
-                this._dragStartY = this._potentialDrag.startY;
-                this._dragStartPoint1 = { ...this._potentialDrag.startPoint1 };
-                this._dragStartPoint2 = { ...this._potentialDrag.startPoint2 };
-                this._chartManager.chartContainer.style.cursor = 'grabbing';
-            }
-        }
-
-        if (this._isDragging && this._dragRuler) {
-            e.preventDefault();
-            e.stopPropagation();
-            const deltaX = x - this._dragStartX;
-            const deltaY = y - this._dragStartY;
-            if (this._dragPoint === 'point1') {
-                const p1x = this._chartManager.timeToCoordinate(this._dragStartPoint1.time);
-                const p1y = this._chartManager.priceToCoordinate(this._dragStartPoint1.price);
-                if (p1x !== null && p1y !== null) {
-                    const newX = p1x + deltaX;
-                    const newY = p1y + deltaY;
-                    const newPrice = this._chartManager.coordinateToPrice(newY);
-                    const newTime = this._chartManager.coordinateToTime(newX);
-                    if (newPrice !== null) this._dragRuler.point1.price = newPrice;
-                    if (newTime !== null) {
-                        this._dragRuler.point1.time = newTime;
-                        this._dragRuler.anchorTime1 = newTime;
-                    }
-                }
-            } else if (this._dragPoint === 'point2') {
-                const p2x = this._chartManager.timeToCoordinate(this._dragStartPoint2.time);
-                const p2y = this._chartManager.priceToCoordinate(this._dragStartPoint2.price);
-                if (p2x !== null && p2y !== null) {
-                    const newX = p2x + deltaX;
-                    const newY = p2y + deltaY;
-                    const newPrice = this._chartManager.coordinateToPrice(newY);
-                    const newTime = this._chartManager.coordinateToTime(newX);
-                    if (newPrice !== null) this._dragRuler.point2.price = newPrice;
-                    if (newTime !== null) {
-                        this._dragRuler.point2.time = newTime;
-                        this._dragRuler.anchorTime2 = newTime;
-                    }
-                }
-            } else if (this._dragPoint === 'line') {
-                const p1x = this._chartManager.timeToCoordinate(this._dragStartPoint1.time);
-                const p1y = this._chartManager.priceToCoordinate(this._dragStartPoint1.price);
-                const p2x = this._chartManager.timeToCoordinate(this._dragStartPoint2.time);
-                const p2y = this._chartManager.priceToCoordinate(this._dragStartPoint2.price);
-                if (p1x !== null && p1y !== null && p2x !== null && p2y !== null) {
-                    const newX1 = p1x + deltaX;
-                    const newY1 = p1y + deltaY;
-                    const newX2 = p2x + deltaX;
-                    const newY2 = p2y + deltaY;
-                    const newPrice1 = this._chartManager.coordinateToPrice(newY1);
-                    const newTime1 = this._chartManager.coordinateToTime(newX1);
-                    const newPrice2 = this._chartManager.coordinateToPrice(newY2);
-                    const newTime2 = this._chartManager.coordinateToTime(newX2);
-                    if (newPrice1 !== null) this._dragRuler.point1.price = newPrice1;
-                    if (newTime1 !== null) {
-                        this._dragRuler.point1.time = newTime1;
-                        this._dragRuler.anchorTime1 = newTime1;
-                    }
-                    if (newPrice2 !== null) this._dragRuler.point2.price = newPrice2;
-                    if (newTime2 !== null) {
-                        this._dragRuler.point2.time = newTime2;
-                        this._dragRuler.anchorTime2 = newTime2;
-                    }
-                }
-            }
-            const newColor = this._dragRuler._isBullish() ? '#00bcd4' : '#f23645';
-            this._dragRuler.options.color = newColor;
-            this._requestRedraw();
-        } else {
-            const hit = this.hitTest(x, y);
-            const hitRuler = hit ? hit.ruler : null;
-            if (hitRuler) {
-                this._chartManager.chartContainer.style.cursor = (hit.type === 'point1' || hit.type === 'point2') ? 'move' : 'grab';
             } else {
-                this._chartManager.chartContainer.style.cursor = 'crosshair';
+                this._tempLine.point2 = { price, time };
             }
-            if (this._hoveredRuler !== hitRuler) {
-                if (this._hoveredRuler) this._hoveredRuler.hovered = false;
-                this._hoveredRuler = hitRuler;
-                if (hitRuler) hitRuler.hovered = true;
-                this._requestRedraw();
-            }
+            this._requestRedraw();
+        }
+        return;
+    }
+
+    // Начало перетаскивания
+    if (this._potentialDrag && !this._isDragging) {
+        const dx = Math.abs(x - this._potentialDrag.startX);
+        const dy = Math.abs(y - this._potentialDrag.startY);
+        if (dx > 3 || dy > 3) {
+            this._isDragging = true;
+            this._dragRuler = this._potentialDrag.ruler;
+            this._dragPoint = this._potentialDrag.pointType;
+            this._dragRuler.dragging = true;
+            this._dragStartX = this._potentialDrag.startX;
+            this._dragStartY = this._potentialDrag.startY;
+            this._dragStartPoint1 = { ...this._potentialDrag.startPoint1 };
+            this._dragStartPoint2 = { ...this._potentialDrag.startPoint2 };
+            this._chartManager.chartContainer.style.cursor = 'grabbing';
         }
     }
 
-    _handleMouseUp(e) {
-        if (this._isDragging) {
-            e.preventDefault();
-            e.stopPropagation();
-            this._isDragging = false;
-            if (this._dragRuler) {
-                this._dragRuler.dragging = false;
-                this._dragRuler.anchorTime1 = this._dragRuler.point1.time;
-                this._dragRuler.anchorTime2 = this._dragRuler.point2.time;
-                if (this._selectedRuler !== this._dragRuler) {
-                    this._dragRuler.showDragPoint1 = false;
-                    this._dragRuler.showDragPoint2 = false;
+    // Перетаскивание
+    if (this._isDragging && this._dragRuler) {
+        e.preventDefault();
+        e.stopPropagation();
+
+        const deltaX = x - this._dragStartX;
+        const deltaY = y - this._dragStartY;
+
+        if (this._dragPoint === 'point1') {
+            const p1x = this._chartManager.timeToCoordinate(this._dragStartPoint1.time);
+            const p1y = this._chartManager.priceToCoordinate(this._dragStartPoint1.price);
+            if (p1x !== null && p1y !== null) {
+                const newX = p1x + deltaX;
+                const newY = p1y + deltaY;
+                const newPrice = this._chartManager.coordinateToPrice(newY);
+                const newTime = this._chartManager.coordinateToTime(newX);
+                if (newPrice !== null) this._dragRuler.point1.price = newPrice;
+                if (newTime !== null) {
+                    this._dragRuler.point1.time = newTime;
+                    this._dragRuler.anchorTime1 = newTime;
                 }
-                this._saveRulers();
-                this._dragRuler = null;
-                this._requestRedraw();
             }
+        } else if (this._dragPoint === 'point2') {
+            const p2x = this._chartManager.timeToCoordinate(this._dragStartPoint2.time);
+            const p2y = this._chartManager.priceToCoordinate(this._dragStartPoint2.price);
+            if (p2x !== null && p2y !== null) {
+                const newX = p2x + deltaX;
+                const newY = p2y + deltaY;
+                const newPrice = this._chartManager.coordinateToPrice(newY);
+                const newTime = this._chartManager.coordinateToTime(newX);
+                if (newPrice !== null) this._dragRuler.point2.price = newPrice;
+                if (newTime !== null) {
+                    this._dragRuler.point2.time = newTime;
+                    this._dragRuler.anchorTime2 = newTime;
+                }
+            }
+        } else if (this._dragPoint === 'line') {
+            const p1x = this._chartManager.timeToCoordinate(this._dragStartPoint1.time);
+            const p1y = this._chartManager.priceToCoordinate(this._dragStartPoint1.price);
+            const p2x = this._chartManager.timeToCoordinate(this._dragStartPoint2.time);
+            const p2y = this._chartManager.priceToCoordinate(this._dragStartPoint2.price);
+            if (p1x !== null && p1y !== null && p2x !== null && p2y !== null) {
+                const newX1 = p1x + deltaX;
+                const newY1 = p1y + deltaY;
+                const newX2 = p2x + deltaX;
+                const newY2 = p2y + deltaY;
+                const newPrice1 = this._chartManager.coordinateToPrice(newY1);
+                const newTime1 = this._chartManager.coordinateToTime(newX1);
+                const newPrice2 = this._chartManager.coordinateToPrice(newY2);
+                const newTime2 = this._chartManager.coordinateToTime(newX2);
+                if (newPrice1 !== null) this._dragRuler.point1.price = newPrice1;
+                if (newTime1 !== null) {
+                    this._dragRuler.point1.time = newTime1;
+                    this._dragRuler.anchorTime1 = newTime1;
+                }
+                if (newPrice2 !== null) this._dragRuler.point2.price = newPrice2;
+                if (newTime2 !== null) {
+                    this._dragRuler.point2.time = newTime2;
+                    this._dragRuler.anchorTime2 = newTime2;
+                }
+            }
+        }
+
+        const newColor = this._dragRuler._isBullish() ? '#00bcd4' : '#f23645';
+        this._dragRuler.options.color = newColor;
+
+        this._requestRedraw();
+    } else {
+        const hit = this.hitTest(x, y);
+        const hitRuler = hit ? hit.ruler : null;
+        if (hitRuler) {
+            this._chartManager.chartContainer.style.cursor = (hit.type === 'point1' || hit.type === 'point2') ? 'move' : 'grab';
+        } else {
             this._chartManager.chartContainer.style.cursor = 'crosshair';
         }
-        this._potentialDrag = null;
+        if (this._hoveredRuler !== hitRuler) {
+            if (this._hoveredRuler) this._hoveredRuler.hovered = false;
+            this._hoveredRuler = hitRuler;
+            if (hitRuler) hitRuler.hovered = true;
+            this._requestRedraw();
+        }
     }
-
+}
+  _handleMouseUp(e) {
+    if (this._isDragging) {
+        e.preventDefault();
+        e.stopPropagation();
+        this._isDragging = false;
+        if (this._dragRuler) {
+            this._dragRuler.dragging = false;
+            // Обновляем якоря (уже есть)
+            this._dragRuler.anchorTime1 = this._dragRuler.point1.time;
+            this._dragRuler.anchorTime2 = this._dragRuler.point2.time;
+            if (this._selectedRuler !== this._dragRuler) {
+                this._dragRuler.showDragPoint1 = false;
+                this._dragRuler.showDragPoint2 = false;
+            }
+            this._saveRulers();
+            this._dragRuler = null;
+            this._requestRedraw();
+        }
+        this._chartManager.chartContainer.style.cursor = 'crosshair';
+    }
+    this._potentialDrag = null;
+}
     _handleMouseLeave() {
         if (this._hoveredRuler) {
             this._hoveredRuler.hovered = false;
@@ -3693,24 +3704,24 @@ class RulerLineManager {
     _handleContextMenu(e) {
         e.preventDefault();
         e.stopPropagation();
+
         const rect = this._chartManager.chartContainer.getBoundingClientRect();
-        let x = e.clientX - rect.left;
-        let y = e.clientY - rect.top;
-        if (this._isMac && this._pixelRatio > 1) {
-            x *= this._pixelRatio;
-            y *= this._pixelRatio;
-        }
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
         const hit = this.hitTest(x, y);
+
         if (hit && hit.ruler) {
             if (this._selectedRuler && this._selectedRuler !== hit.ruler) {
                 this._selectedRuler.selected = false;
                 this._selectedRuler.showDragPoint1 = false;
                 this._selectedRuler.showDragPoint2 = false;
             }
+
             hit.ruler.selected = true;
             hit.ruler.showDragPoint1 = true;
             hit.ruler.showDragPoint2 = true;
             this._selectedRuler = hit.ruler;
+
             this._requestRedraw();
 
             const menu = document.getElementById('rulerContextMenu');
@@ -3720,6 +3731,7 @@ class RulerLineManager {
                     const el = document.getElementById(id);
                     if (el) el.style.display = 'none';
                 });
+
                 menu.style.display = 'flex';
                 menu.style.left = e.clientX + 'px';
                 menu.style.top = e.clientY + 'px';
@@ -3750,14 +3762,12 @@ class RulerLineManager {
         e.preventDefault();
         e.stopPropagation();
         const rect = this._chartManager.chartContainer.getBoundingClientRect();
-        let x = e.clientX - rect.left;
-        let y = e.clientY - rect.top;
-        if (this._isMac && this._pixelRatio > 1) {
-            x *= this._pixelRatio;
-            y *= this._pixelRatio;
-        }
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
         const hit = this.hitTest(x, y);
-        if (hit) this.deleteRuler(hit.ruler.id);
+        if (hit) {
+            this.deleteRuler(hit.ruler.id);
+        }
     }
 
     _handleKeyDown(e) {
@@ -3766,119 +3776,206 @@ class RulerLineManager {
             this._selectedRuler = null;
         }
     }
+_startDrawing(x, y) {
+    // Для Mac — преобразуем обратно в CSS пиксели
+    if (this._isMac && this._pixelRatio > 1) {
+        x /= this._pixelRatio;
+        y /= this._pixelRatio;
+    }
+    let price = this._chartManager.coordinateToPrice(y);
+    let time = this._chartManager.coordinateToTime(x);
+    let anchorCandle = null;
 
-    _startDrawing(x, y) {
-        let price = this._chartManager.coordinateToPrice(y);
-        let time = this._chartManager.coordinateToTime(x);
-        let anchorCandle = null;
-        if (price === null || time === null) {
-            const lastCandle = this._chartManager.getLastCandle();
-            if (lastCandle) { price = lastCandle.close; time = lastCandle.time; } else return;
+    if (price === null || time === null) {
+        const lastCandle = this._chartManager.getLastCandle();
+        if (lastCandle) {
+            price = lastCandle.close;
+            time = lastCandle.time;
+        } else return;
+    }
+
+    if (this._magnetEnabled) {
+        const snapped = this._snapToPrice(price, time);
+        price = snapped.price;
+        time = snapped.time;
+        anchorCandle = snapped.anchorCandle;
+    } else {
+        const snappedTime = this._findClosestCandleTime(time);
+        if (snappedTime) time = snappedTime;
+    }
+
+    this._drawingStartPoint = {
+        price, time, x, y, anchorCandle
+    };
+    this._isDrawingSecondPoint = true;
+
+    this._tempPoint = {
+        price: price,
+        time: time,
+        x: x,
+        y: y
+    };
+
+    this._tempLine = null;
+
+    const series = this._chartManager.currentChartType === 'candle' 
+        ? this._chartManager.candleSeries 
+        : this._chartManager.barSeries;
+    
+    if (series && !this._tempPointPrimitive) {
+        this._tempPointPrimitive = new TempRulerPointPrimitive(this);
+        try {
+            series.attachPrimitive(this._tempPointPrimitive);
+        } catch (e) {
+            console.warn('Ошибка при создании временной точки:', e);
         }
-        if (this._magnetEnabled) {
-            const snapped = this._snapToPrice(price, time);
-            price = snapped.price;
-            time = snapped.time;
-            anchorCandle = snapped.anchorCandle;
-        } else {
-            const snappedTime = this._findClosestCandleTime(time);
-            if (snappedTime) time = snappedTime;
+    }
+
+    this._requestRedraw();
+}
+
+_completeDrawing(x, y) {
+    // Для Mac — преобразуем обратно в CSS пиксели
+    if (this._isMac && this._pixelRatio > 1) {
+        x /= this._pixelRatio;
+        y /= this._pixelRatio;
+    }
+    if (!this._drawingStartPoint) return;
+
+    let price = this._chartManager.coordinateToPrice(y);
+    let time = this._chartManager.coordinateToTime(x);
+    let anchorCandle = null;
+
+    if (price === null || time === null) {
+        const lastCandle = this._chartManager.getLastCandle();
+        if (lastCandle) {
+            price = lastCandle.close;
+            time = lastCandle.time;
+        } else return;
+    }
+
+    if (this._magnetEnabled) {
+        const snapped = this._snapToPrice(price, time);
+        price = snapped.price;
+        time = snapped.time;
+        anchorCandle = snapped.anchorCandle;
+    } else {
+        const snappedTime = this._findClosestCandleTime(time);
+        if (snappedTime) time = snappedTime;
+    }
+
+    const startTime = this._drawingStartPoint.time;
+    const endTime = time;
+    
+    let point1, point2, anchorCandle1, anchorCandle2;
+    
+    if (startTime <= endTime) {
+        point1 = { price: this._drawingStartPoint.price, time: startTime };
+        point2 = { price: price, time: endTime };
+        anchorCandle1 = this._drawingStartPoint.anchorCandle;
+        anchorCandle2 = anchorCandle;
+    } else {
+        point1 = { price: price, time: endTime };
+        point2 = { price: this._drawingStartPoint.price, time: startTime };
+        anchorCandle1 = anchorCandle;
+        anchorCandle2 = this._drawingStartPoint.anchorCandle;
+    }
+
+    this.createRuler(point1, point2, {
+        anchorCandle1: anchorCandle1,
+        anchorCandle2: anchorCandle2
+    });
+
+    const series = this._chartManager.currentChartType === 'candle' 
+        ? this._chartManager.candleSeries 
+        : this._chartManager.barSeries;
+
+    if (this._tempLinePrimitive) {
+        if (series) {
+            try {
+                series.detachPrimitive(this._tempLinePrimitive);
+            } catch (e) {}
         }
-        this._drawingStartPoint = { price, time, x, y, anchorCandle };
-        this._isDrawingSecondPoint = true;
-        this._tempPoint = { price, time, x, y };
+        this._tempLinePrimitive = null;
         this._tempLine = null;
-        const series = this._chartManager.currentChartType === 'candle' 
-            ? this._chartManager.candleSeries 
-            : this._chartManager.barSeries;
-        if (series && !this._tempPointPrimitive) {
-            this._tempPointPrimitive = new TempRulerPointPrimitive(this);
-            try { series.attachPrimitive(this._tempPointPrimitive); } catch (e) {}
-        }
-        this._requestRedraw();
     }
 
-    _completeDrawing(x, y) {
-        if (!this._drawingStartPoint) return;
-        let price = this._chartManager.coordinateToPrice(y);
-        let time = this._chartManager.coordinateToTime(x);
-        let anchorCandle = null;
-        if (price === null || time === null) {
-            const lastCandle = this._chartManager.getLastCandle();
-            if (lastCandle) { price = lastCandle.close; time = lastCandle.time; } else return;
+    if (this._tempPointPrimitive) {
+        if (series) {
+            try {
+                series.detachPrimitive(this._tempPointPrimitive);
+            } catch (e) {}
         }
-        if (this._magnetEnabled) {
-            const snapped = this._snapToPrice(price, time);
-            price = snapped.price;
-            time = snapped.time;
-            anchorCandle = snapped.anchorCandle;
-        } else {
-            const snappedTime = this._findClosestCandleTime(time);
-            if (snappedTime) time = snappedTime;
-        }
-        const startTime = this._drawingStartPoint.time;
-        const endTime = time;
-        let point1, point2, anchorCandle1, anchorCandle2;
-        if (startTime <= endTime) {
-            point1 = { price: this._drawingStartPoint.price, time: startTime };
-            point2 = { price, time: endTime };
-            anchorCandle1 = this._drawingStartPoint.anchorCandle;
-            anchorCandle2 = anchorCandle;
-        } else {
-            point1 = { price, time: endTime };
-            point2 = { price: this._drawingStartPoint.price, time: startTime };
-            anchorCandle1 = anchorCandle;
-            anchorCandle2 = this._drawingStartPoint.anchorCandle;
-        }
-        this.createRuler(point1, point2, { anchorCandle1, anchorCandle2 });
-        const series = this._chartManager.currentChartType === 'candle' 
-            ? this._chartManager.candleSeries 
-            : this._chartManager.barSeries;
-        if (this._tempLinePrimitive) {
-            if (series) try { series.detachPrimitive(this._tempLinePrimitive); } catch(e) {}
-            this._tempLinePrimitive = null;
-            this._tempLine = null;
-        }
-        if (this._tempPointPrimitive) {
-            if (series) try { series.detachPrimitive(this._tempPointPrimitive); } catch(e) {}
-            this._tempPointPrimitive = null;
-            this._tempPoint = null;
-        }
-        this._drawingStartPoint = null;
-        this._isDrawingSecondPoint = false;
-        this._requestRedraw();
-        this.setDrawingMode(false);
+        this._tempPointPrimitive = null;
+        this._tempPoint = null;
     }
 
+    this._drawingStartPoint = null;
+    this._isDrawingSecondPoint = false;
+    this._requestRedraw();
+    this.setDrawingMode(false);
+}
     _snapToPrice(price, time) {
         if (!this._chartManager.chartData.length) return { price, time, anchorCandle: null };
+        
         const data = this._chartManager.chartData;
+        
         let closestCandle;
-        if (time <= data[0].time) closestCandle = data[0];
-        else if (time >= data[data.length-1].time) closestCandle = data[data.length-1];
-        else {
+        if (time <= data[0].time) {
+            closestCandle = data[0];
+        } else if (time >= data[data.length-1].time) {
+            closestCandle = data[data.length-1];
+        } else {
             closestCandle = data[0];
             let minTimeDiff = Math.abs(data[0].time - time);
             for (let i = 1; i < data.length; i++) {
                 const diff = Math.abs(data[i].time - time);
-                if (diff < minTimeDiff) { minTimeDiff = diff; closestCandle = data[i]; }
+                if (diff < minTimeDiff) {
+                    minTimeDiff = diff;
+                    closestCandle = data[i];
+                }
             }
         }
+        
         const priceY = this._chartManager.priceToCoordinate(price);
         const highY = this._chartManager.priceToCoordinate(closestCandle.high);
         const lowY = this._chartManager.priceToCoordinate(closestCandle.low);
         const closeY = this._chartManager.priceToCoordinate(closestCandle.close);
+        
         if (priceY === null || highY === null) return { price, time, anchorCandle: null };
-        const dHighPx = Math.abs(highY - priceY), dLowPx = Math.abs(lowY - priceY), dClosePx = Math.abs(closeY - priceY);
-        let snappedPrice = price, anchorType = null;
+        
+        const dHighPx = Math.abs(highY - priceY);
+        const dLowPx = Math.abs(lowY - priceY);
+        const dClosePx = Math.abs(closeY - priceY);
+        
+        let snappedPrice = price;
+        let anchorType = null;
         const MAGNET_THRESHOLD = 150;
+        
         const minDistPx = Math.min(dHighPx, dLowPx, dClosePx);
+        
         if (minDistPx < MAGNET_THRESHOLD) {
-            if (minDistPx === dHighPx) { snappedPrice = closestCandle.high; anchorType = 'high'; }
-            else if (minDistPx === dLowPx) { snappedPrice = closestCandle.low; anchorType = 'low'; }
-            else { snappedPrice = closestCandle.close; anchorType = 'close'; }
+            if (minDistPx === dHighPx) {
+                snappedPrice = closestCandle.high;
+                anchorType = 'high';
+            } else if (minDistPx === dLowPx) {
+                snappedPrice = closestCandle.low;
+                anchorType = 'low';
+            } else {
+                snappedPrice = closestCandle.close;
+                anchorType = 'close';
+            }
         }
-        return { price: snappedPrice, time: closestCandle.time, anchorCandle: { time: closestCandle.time, type: anchorType, price: snappedPrice } };
+        
+        return { 
+            price: snappedPrice, 
+            time: closestCandle.time,
+            anchorCandle: {
+                time: closestCandle.time,
+                type: anchorType,
+                price: snappedPrice
+            }
+        };
     }
 
     _findClosestCandleTime(time) {
@@ -3890,33 +3987,47 @@ class RulerLineManager {
         let minDiff = Math.abs(data[0].time - time);
         for (let i = 1; i < data.length; i++) {
             const diff = Math.abs(data[i].time - time);
-            if (diff < minDiff) { minDiff = diff; closestCandle = data[i]; }
+            if (diff < minDiff) {
+                minDiff = diff;
+                closestCandle = data[i];
+            }
         }
         return closestCandle.time;
     }
 
     _showSettings(ruler) {
         const panel = document.getElementById('rulerSettingsPanel');
-        if (!panel) return;
+        if (!panel) {
+            console.error('Панель настроек не найдена в HTML');
+            return;
+        }
+
         const opacitySlider = panel.querySelector('#rulerFillOpacity');
         const opacityValue = panel.querySelector('#rulerFillOpacityValue');
+        
         if (opacitySlider && opacityValue) {
             opacitySlider.value = Math.round((ruler.options.fillOpacity || 0.25) * 100);
             opacityValue.textContent = opacitySlider.value + '%';
+
             const newSlider = opacitySlider.cloneNode(true);
             opacitySlider.parentNode.replaceChild(newSlider, opacitySlider);
+            
             newSlider.oninput = () => {
                 const val = newSlider.value;
                 const valDisplay = panel.querySelector('#rulerFillOpacityValue');
                 if (valDisplay) valDisplay.textContent = val + '%';
             };
         }
+
         const closeBtn = panel.querySelector('.close-settings');
         if (closeBtn) {
             const newCloseBtn = closeBtn.cloneNode(true);
             closeBtn.parentNode.replaceChild(newCloseBtn, closeBtn);
-            newCloseBtn.onclick = () => { panel.style.display = 'none'; };
+            newCloseBtn.onclick = () => {
+                panel.style.display = 'none';
+            };
         }
+
         const saveBtn = panel.querySelector('#rulerSaveSettings');
         if (saveBtn) {
             const newSaveBtn = saveBtn.cloneNode(true);
@@ -3931,6 +4042,7 @@ class RulerLineManager {
                 panel.style.display = 'none';
             };
         }
+
         const deleteBtn = panel.querySelector('#rulerDeleteFromSettings');
         if (deleteBtn) {
             const newDeleteBtn = deleteBtn.cloneNode(true);
@@ -3940,17 +4052,22 @@ class RulerLineManager {
                 panel.style.display = 'none';
             };
         }
+
         panel.style.display = 'block';
         panel.style.left = '50%';
         panel.style.top = '50%';
         panel.style.transform = 'translate(-50%, -50%)';
+        
         const closeOnOutsideClick = (e) => {
             if (!panel.contains(e.target) && panel.style.display === 'block') {
                 panel.style.display = 'none';
                 document.removeEventListener('mousedown', closeOnOutsideClick);
             }
         };
-        setTimeout(() => { document.addEventListener('mousedown', closeOnOutsideClick); }, 100);
+        
+        setTimeout(() => {
+            document.addEventListener('mousedown', closeOnOutsideClick);
+        }, 100);
     }
 
     _requestRedraw() {
@@ -3961,89 +4078,115 @@ class RulerLineManager {
         if (this._tempPointPrimitive) this._tempPointPrimitive.requestRedraw();
     }
 
-    async _saveRulers() {
-        if (this._rulers.length === 0) return;
-        const promises = this._rulers.map(item => 
-            window.db.put('drawings', {
-                id: item.ruler.id,
-                type: 'ruler',
-                symbolKey: item.ruler.symbolKey,
-                data: {
-                    point1: item.ruler.point1,
-                    point2: item.ruler.point2,
-                    options: item.ruler.options,
-                    timeframeVisibility: item.ruler.timeframeVisibility,
-                    anchorCandle1: item.ruler.anchorCandle1,
-                    anchorCandle2: item.ruler.anchorCandle2,
-                    anchorTime1: item.ruler.anchorTime1,
-                    anchorTime2: item.ruler.anchorTime2,
-                    symbol: item.ruler.symbol,
-                    exchange: item.ruler.exchange,
-                    marketType: item.ruler.marketType
-                }
-            }).catch(e => console.warn('Save ruler error:', e))
-        );
-        await Promise.all(promises);
-    }
-
-    async loadRulers() {
-        try {
-            await waitForReady([
-                () => window.dbReady === true,
-                () => this._chartManager?.chartData?.length > 0,
-                () => !!(this._chartManager?.candleSeries || this._chartManager?.barSeries)
-            ]);
-            const currentKey = this._getCurrentSymbolKey();
-            const allDrawings = await window.db.getByIndex('drawings', 'symbolKey', currentKey);
-            const rulerRecords = allDrawings.filter(d => d.type === 'ruler');
-            const series = this._chartManager.currentChartType === 'candle' 
-                ? this._chartManager.candleSeries 
-                : this._chartManager.barSeries;
-            const newRulers = [];
-            for (const rec of rulerRecords) {
-                try {
-                    const ruler = new RulerLine(rec.data.point1, rec.data.point2, this._chartManager, rec.data.options);
-                    ruler.id = rec.id;
-                    ruler.symbolKey = rec.symbolKey;
-                    ruler.symbol = rec.data.symbol;
-                    ruler.exchange = rec.data.exchange;
-                    ruler.marketType = rec.data.marketType;
-                    ruler.timeframeVisibility = rec.data.timeframeVisibility || {};
-                    ruler.anchorCandle1 = rec.data.anchorCandle1;
-                    ruler.anchorCandle2 = rec.data.anchorCandle2;
-                    ruler.anchorTime1 = rec.data.anchorTime1;
-                    ruler.anchorTime2 = rec.data.anchorTime2;
-                    const primitive = new RulerLinePrimitive(ruler, this._chartManager);
-                    series.attachPrimitive(primitive);
-                    newRulers.push({ ruler, primitive, series });
-                } catch (e) { console.warn('Failed to load ruler:', rec.id, e); }
+  async _saveRulers() {
+    if (this._rulers.length === 0) return;
+    
+    const promises = this._rulers.map(item => 
+        window.db.put('drawings', {
+            id: item.ruler.id,
+            type: 'ruler',
+            symbolKey: item.ruler.symbolKey,
+            data: {
+                point1: item.ruler.point1,
+                point2: item.ruler.point2,
+                options: item.ruler.options,
+                timeframeVisibility: item.ruler.timeframeVisibility,
+                anchorCandle1: item.ruler.anchorCandle1,
+                anchorCandle2: item.ruler.anchorCandle2,
+                anchorTime1: item.ruler.anchorTime1,
+                anchorTime2: item.ruler.anchorTime2,
+                symbol: item.ruler.symbol,
+                exchange: item.ruler.exchange,
+                marketType: item.ruler.marketType
             }
-            this._rulers.forEach(item => {
-                try { item.series?.detachPrimitive(item.primitive); } catch(e) {}
-            });
-            this._rulers = newRulers;
-            this._requestRedraw();
-        } catch (error) { console.error('❌ loadRulers failed:', error); }
-    }
-
-    _autoLoadRulers() {
-        setTimeout(async () => {
-            try {
-                if (this._rulers.length > 0) return;
-                if (!window.dbReady) {
-                    await new Promise(resolve => {
-                        const check = () => window.dbReady ? resolve() : setTimeout(check, 50);
-                        check();
-                    });
-                }
-                await this.loadRulers();
-            } catch (error) { console.error('❌ Auto-load rulers failed:', error); }
-        }, 200);
-    }
-
-    syncWithNewTimeframe() {}
+        }).catch(e => console.warn('Save ruler error:', e))
+    );
+    
+    await Promise.all(promises);
+    console.log(`💾 Saved ${this._rulers.length} rulers`);
 }
-   
+
+async loadRulers() {
+    try {
+        await waitForReady([
+            () => window.dbReady === true,
+            () => this._chartManager?.chartData?.length > 0,
+            () => !!(this._chartManager?.candleSeries || this._chartManager?.barSeries)
+        ]);
+
+        const currentKey = this._getCurrentSymbolKey();
+        console.log('📊 Loading rulers for:', currentKey);
+
+        const allDrawings = await window.db.getByIndex('drawings', 'symbolKey', currentKey);
+        const rulerRecords = allDrawings.filter(d => d.type === 'ruler');
+        const series = this._chartManager.currentChartType === 'candle' 
+            ? this._chartManager.candleSeries 
+            : this._chartManager.barSeries;
+
+        const newRulers = [];
+        for (const rec of rulerRecords) {
+            try {
+                const ruler = new RulerLine(rec.data.point1, rec.data.point2, this._chartManager, rec.data.options);
+                ruler.id = rec.id;
+                ruler.symbolKey = rec.symbolKey;
+                ruler.symbol = rec.data.symbol;
+                ruler.exchange = rec.data.exchange;
+                ruler.marketType = rec.data.marketType;
+                ruler.timeframeVisibility = rec.data.timeframeVisibility || {};
+                ruler.anchorCandle1 = rec.data.anchorCandle1;
+                ruler.anchorCandle2 = rec.data.anchorCandle2;
+                ruler.anchorTime1 = rec.data.anchorTime1;
+                ruler.anchorTime2 = rec.data.anchorTime2;
+
+                const primitive = new RulerLinePrimitive(ruler, this._chartManager);
+                series.attachPrimitive(primitive);
+                newRulers.push({ ruler, primitive, series });
+            } catch (e) {
+                console.warn('Failed to load ruler:', rec.id, e);
+            }
+        }
+
+        // Удаляем старые примитивы
+        this._rulers.forEach(item => {
+            try { item.series?.detachPrimitive(item.primitive); } catch(e) {}
+        });
+
+        this._rulers = newRulers;
+        this._requestRedraw();
+        console.log(`✅ Loaded ${this._rulers.length} rulers for ${currentKey}`);
+    } catch (error) {
+        console.error('❌ loadRulers failed:', error);
+    }
+}
+// В RulerLineManager добавить:
+_autoLoadRulers() {
+    setTimeout(async () => {
+        try {
+            // Защита от двойной загрузки
+            if (this._rulers.length > 0) {
+                console.log('📊 Rulers already loaded, skipping auto-load');
+                return;
+            }
+            
+            if (!window.dbReady) {
+                await new Promise(resolve => {
+                    const check = () => window.dbReady ? resolve() : setTimeout(check, 50);
+                    check();
+                });
+            }
+            console.log('🚀 Auto-loading rulers...');
+            await this.loadRulers();
+            console.log('✅ Rulers loaded');
+        } catch (error) {
+            console.error('❌ Auto-load rulers failed:', error);
+        }
+    }, 200);
+}
+    syncWithNewTimeframe() {
+        // Ничего не делаем – updateAllViews сам всё обновит
+    }
+}
+
 // ========== АЛЕРТ (ИСПРАВЛЕННЫЙ - НЕ ПРОПАДАЕТ ПРИ СМЕНЕ ТАЙМФРЕЙМА) ==========
 class AlertLine {  
     constructor(price, time, options = {}) {
