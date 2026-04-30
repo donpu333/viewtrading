@@ -166,11 +166,23 @@ class TimerManager {
         this._currentTf = CONFIG.defaultInterval || '1h';
         this._primitive = null;
         this._timerElement = { textContent: '' };
+        
+        // Проверка на Mac с Retina
+        const isMac = /Macintosh/.test(navigator.userAgent);
+        const isRetina = window.devicePixelRatio > 1;
+        this._disabled = isMac && isRetina;
+        
+        if (this._disabled) {
+            console.log('🔕 Таймер отключён на Mac с Retina');
+            return;
+        }
+        
         chartManager.timerManager = this;
         setTimeout(() => this._createPrimitive(), 500);
     }
 
   _createPrimitive() {
+    if (this._disabled) return;
     if (!this._chartManager || !this._chartManager.chart) return;
     
     this._primitive = new TimerPrimitive(this, this._chartManager);
@@ -206,6 +218,8 @@ class TimerManager {
     }
 
     start(interval) {
+        if (this._disabled) return;
+        
         this._currentTf = interval;
         
         if (this._isDayTimeframe(interval)) {
@@ -221,6 +235,8 @@ class TimerManager {
     }
 
     _updateTimer() {
+        if (this._disabled) return;
+        
         if (this._isDayTimeframe(this._currentTf)) {
             this._timerElement.textContent = '';
             if (this._primitive) this._primitive.setEnabled(false);
@@ -256,6 +272,7 @@ class TimerManager {
     }
     
     reattach() {
+        if (this._disabled) return;
         if (!this._primitive) return;
         
         const wasEnabled = this._primitive.isEnabled();
