@@ -38,7 +38,22 @@ class TimerRenderer {
             const rectWidth = textWidth + paddingH * 2;
             const rectHeight = (fontSize + paddingV * 2) * scope.verticalPixelRatio;
             
-       const rectX = scope.mediaSize.width - rectWidth;
+            // Получаем реальную ширину контейнера из DOM
+            const container = chartManager.chart.chartElement();
+            const domRect = container.getBoundingClientRect();
+            const domWidth = domRect.width * (window.devicePixelRatio || 1);
+            const canvasWidth = scope.mediaSize.width;
+            
+            // Разница между DOM и canvas = ширина шкалы (если она отдельным слоем)
+            const scaleWidth = domWidth > canvasWidth ? domWidth - canvasWidth : 0;
+            
+            // Таймер на шкале, если шкала отдельно. Иначе у правого края canvas.
+            let rectX;
+            if (scaleWidth > 0) {
+                rectX = canvasWidth + scaleWidth - rectWidth - 4 * scope.horizontalPixelRatio;
+            } else {
+                rectX = canvasWidth - rectWidth - 4 * scope.horizontalPixelRatio;
+            }
             
             const rectY = yCoord - rectHeight / 2;
             const minY = 0;
