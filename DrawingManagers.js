@@ -2066,100 +2066,101 @@ class TrendLineManager {
         if (trendMenu) trendMenu.style.display = 'none';
     }
 }
-    _handleMouseMove(e) {
-        const rect = this._chartManager.chartContainer.getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const y = e.clientY - rect.top;
-        this._lastMouseX = x;
-        this._lastMouseY = y;
-        
-      if (this._isDrawingMode && this._isDrawingSecondPoint && this._drawingStartPoint) {
-    let price = this._chartManager.coordinateToPrice(y);
-    let time = this._getTimeFromCoordinate(x);
-    if (price !== null && time !== null) {
-        // БЕЗ МАГНИТА – используем точные координаты мыши
-        if (this._tempLine) {
-            this._tempLine.point2 = { price, time };
-        } else {
-            this._tempLine = { 
-                point1: this._drawingStartPoint, 
-                point2: { price, time }, 
-                options: { 
-                    color: document.getElementById('currentColorBox')?.style.backgroundColor || '#4A90E2', 
-                    lineWidth: parseInt(document.getElementById('settingThickness')?.value) || 2, 
-                    lineStyle: document.getElementById('templateSelect')?.value || 'solid' 
-                } 
-            };
-            const series = this._chartManager.currentChartType === 'candle' ? this._chartManager.candleSeries : this._chartManager.barSeries;
-            if (series && !this._tempPrimitive) { 
-                this._tempPrimitive = new TempTrendLinePrimitive(this); 
-                try { series.attachPrimitive(this._tempPrimitive); } catch(e) {} 
-            }
-        }
-        this._requestRedraw();
+   _handleMouseMove(e) {
+    const rect = this._chartManager.chartContainer.getBoundingClientRect();
+    let x = e.clientX - rect.left;
+    let y = e.clientY - rect.top;
+    if (this._isMac && this._pixelRatio > 1) {
+        x *= this._pixelRatio;
+        y *= this._pixelRatio;
     }
-    return;
-}
-        
-
-        if (this._potentialDrag && !this._isDragging) {
-            const dx = Math.abs(x - this._potentialDrag.startX);
-            const dy = Math.abs(y - this._potentialDrag.startY);
-            if (dx > 3 || dy > 3) {
-                this._isDragging = true;
-                this._dragLine = this._potentialDrag.line;
-                this._dragPoint = this._potentialDrag.pointType;
-                this._dragLine.dragging = true;
-
-                const p1x = this._chartManager.timeToCoordinateWithFallback?.(this._dragLine.point1.time) ?? this._chartManager.timeToCoordinate(this._dragLine.point1.time);
-                const p1y = this._chartManager.priceToCoordinateWithFallback?.(this._dragLine.point1.price) ?? this._chartManager.priceToCoordinate(this._dragLine.point1.price);
-                const p2x = this._chartManager.timeToCoordinateWithFallback?.(this._dragLine.point2.time) ?? this._chartManager.timeToCoordinate(this._dragLine.point2.time);
-                const p2y = this._chartManager.priceToCoordinateWithFallback?.(this._dragLine.point2.price) ?? this._chartManager.priceToCoordinate(this._dragLine.point2.price);
-
-                if (p1x !== null && p1y !== null) this._dragLine._pixelStart1 = { x: p1x, y: p1y };
-                if (p2x !== null && p2y !== null) this._dragLine._pixelStart2 = { x: p2x, y: p2y };
-                this._dragStartX = this._potentialDrag.startX;
-                this._dragStartY = this._potentialDrag.startY;
-                this._dragStartPoint1 = { ...this._potentialDrag.startPoint1 };
-                this._dragStartPoint2 = { ...this._potentialDrag.startPoint2 };
-                this._chartManager.chartContainer.style.cursor = 'grabbing';
-            }
-        }
-        if (this._isDragging && this._dragLine) {
-            e.preventDefault();
-            e.stopPropagation();
-            const deltaX = x - this._dragStartX;
-            const deltaY = y - this._dragStartY;
-            if (this._dragPoint === 'point1') {
-                if (this._dragLine._pixelStart1) {
-                    this._dragLine._tempPixel1 = { x: this._dragLine._pixelStart1.x + deltaX, y: this._dragLine._pixelStart1.y + deltaY };
-                    delete this._dragLine._tempPixel2;
-                }
-            } else if (this._dragPoint === 'point2') {
-                if (this._dragLine._pixelStart2) {
-                    this._dragLine._tempPixel2 = { x: this._dragLine._pixelStart2.x + deltaX, y: this._dragLine._pixelStart2.y + deltaY };
-                    delete this._dragLine._tempPixel1;
-                }
-            } else if (this._dragPoint === 'line') {
-                if (this._dragLine._pixelStart1 && this._dragLine._pixelStart2) {
-                    this._dragLine._tempPixel1 = { x: this._dragLine._pixelStart1.x + deltaX, y: this._dragLine._pixelStart1.y + deltaY };
-                    this._dragLine._tempPixel2 = { x: this._dragLine._pixelStart2.x + deltaX, y: this._dragLine._pixelStart2.y + deltaY };
+    this._lastMouseX = x;
+    this._lastMouseY = y;
+    
+    if (this._isDrawingMode && this._isDrawingSecondPoint && this._drawingStartPoint) {
+        let price = this._chartManager.coordinateToPrice(y);
+        let time = this._getTimeFromCoordinate(x);
+        if (price !== null && time !== null) {
+            if (this._tempLine) {
+                this._tempLine.point2 = { price, time };
+            } else {
+                this._tempLine = { 
+                    point1: this._drawingStartPoint, 
+                    point2: { price, time }, 
+                    options: { 
+                        color: document.getElementById('currentColorBox')?.style.backgroundColor || '#4A90E2', 
+                        lineWidth: parseInt(document.getElementById('settingThickness')?.value) || 2, 
+                        lineStyle: document.getElementById('templateSelect')?.value || 'solid' 
+                    } 
+                };
+                const series = this._chartManager.currentChartType === 'candle' ? this._chartManager.candleSeries : this._chartManager.barSeries;
+                if (series && !this._tempPrimitive) { 
+                    this._tempPrimitive = new TempTrendLinePrimitive(this); 
+                    try { series.attachPrimitive(this._tempPrimitive); } catch(e) {} 
                 }
             }
             this._requestRedraw();
-        } else {
-            const hit = this.hitTest(x, y);
-            const hitLine = hit ? hit.trendLine : null;
-            this._chartManager.chartContainer.style.cursor = hitLine ? (hit.type === 'point1' || hit.type === 'point2' ? 'move' : 'grab') : 'crosshair';
-            if (this._hoveredLine !== hitLine) {
-                if (this._hoveredLine) this._hoveredLine.hovered = false;
-                this._hoveredLine = hitLine;
-                if (hitLine) hitLine.hovered = true;
-                this._requestRedraw();
-            }
         }
+        return;
     }
 
+    if (this._potentialDrag && !this._isDragging) {
+        const dx = Math.abs(x - this._potentialDrag.startX);
+        const dy = Math.abs(y - this._potentialDrag.startY);
+        if (dx > 3 || dy > 3) {
+            this._isDragging = true;
+            this._dragLine = this._potentialDrag.line;
+            this._dragPoint = this._potentialDrag.pointType;
+            this._dragLine.dragging = true;
+
+            const p1x = this._chartManager.timeToCoordinateWithFallback?.(this._dragLine.point1.time) ?? this._chartManager.timeToCoordinate(this._dragLine.point1.time);
+            const p1y = this._chartManager.priceToCoordinateWithFallback?.(this._dragLine.point1.price) ?? this._chartManager.priceToCoordinate(this._dragLine.point1.price);
+            const p2x = this._chartManager.timeToCoordinateWithFallback?.(this._dragLine.point2.time) ?? this._chartManager.timeToCoordinate(this._dragLine.point2.time);
+            const p2y = this._chartManager.priceToCoordinateWithFallback?.(this._dragLine.point2.price) ?? this._chartManager.priceToCoordinate(this._dragLine.point2.price);
+
+            if (p1x !== null && p1y !== null) this._dragLine._pixelStart1 = { x: p1x, y: p1y };
+            if (p2x !== null && p2y !== null) this._dragLine._pixelStart2 = { x: p2x, y: p2y };
+            this._dragStartX = this._potentialDrag.startX;
+            this._dragStartY = this._potentialDrag.startY;
+            this._dragStartPoint1 = { ...this._potentialDrag.startPoint1 };
+            this._dragStartPoint2 = { ...this._potentialDrag.startPoint2 };
+            this._chartManager.chartContainer.style.cursor = 'grabbing';
+        }
+    }
+    if (this._isDragging && this._dragLine) {
+        e.preventDefault();
+        e.stopPropagation();
+        const deltaX = x - this._dragStartX;
+        const deltaY = y - this._dragStartY;
+        if (this._dragPoint === 'point1') {
+            if (this._dragLine._pixelStart1) {
+                this._dragLine._tempPixel1 = { x: this._dragLine._pixelStart1.x + deltaX, y: this._dragLine._pixelStart1.y + deltaY };
+                delete this._dragLine._tempPixel2;
+            }
+        } else if (this._dragPoint === 'point2') {
+            if (this._dragLine._pixelStart2) {
+                this._dragLine._tempPixel2 = { x: this._dragLine._pixelStart2.x + deltaX, y: this._dragLine._pixelStart2.y + deltaY };
+                delete this._dragLine._tempPixel1;
+            }
+        } else if (this._dragPoint === 'line') {
+            if (this._dragLine._pixelStart1 && this._dragLine._pixelStart2) {
+                this._dragLine._tempPixel1 = { x: this._dragLine._pixelStart1.x + deltaX, y: this._dragLine._pixelStart1.y + deltaY };
+                this._dragLine._tempPixel2 = { x: this._dragLine._pixelStart2.x + deltaX, y: this._dragLine._pixelStart2.y + deltaY };
+            }
+        }
+        this._requestRedraw();
+    } else {
+        const hit = this.hitTest(x, y);
+        const hitLine = hit ? hit.trendLine : null;
+        this._chartManager.chartContainer.style.cursor = hitLine ? (hit.type === 'point1' || hit.type === 'point2' ? 'move' : 'grab') : 'crosshair';
+        if (this._hoveredLine !== hitLine) {
+            if (this._hoveredLine) this._hoveredLine.hovered = false;
+            this._hoveredLine = hitLine;
+            if (hitLine) hitLine.hovered = true;
+            this._requestRedraw();
+        }
+    }
+}
     _handleMouseUp(e) {
         if (this._isDragging) {
             e.preventDefault();
