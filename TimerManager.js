@@ -50,7 +50,8 @@ class TimerRenderer {
             // Таймер на шкале, если шкала отдельно. Иначе у правого края canvas.
             // Привязка X
 let rectX;
-const xCandle = activeSeries.timeToCoordinate?.(lastCandle.time);
+// Всегда у правого края
+const rectX = scope.mediaSize.width - rectWidth - 4 * scope.horizontalPixelRatio;
 if (xCandle !== null && xCandle !== undefined) {
     rectX = xCandle + 10 * scope.horizontalPixelRatio;
 } else {
