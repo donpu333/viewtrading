@@ -4,6 +4,17 @@ class DailySeparator {
         this._primitive = null;
         this._requestUpdate = null;
         
+        // Проверка на Mac с Retina — отключаем полностью
+        const isMac = /Macintosh/.test(navigator.userAgent);
+        const isRetina = window.devicePixelRatio > 1;
+        this._disabled = isMac && isRetina;
+        
+        if (this._disabled) {
+            console.log('🔕 DailySeparator отключён на Mac с Retina');
+            return;
+        }
+        
+        // Загружаем настройки
         const saved = localStorage.getItem('separatorSettings');
         if (saved) {
             const s = JSON.parse(saved);
@@ -24,6 +35,7 @@ class DailySeparator {
     }
     
     _attach() {
+        if (this._disabled) return;
         if (!this._cm || !this._cm.chart) {
             setTimeout(() => this._attach(), 500);
             return;
@@ -40,19 +52,11 @@ class DailySeparator {
         this._primitive = {
             paneViews: () => [{
                 renderer: () => ({
-                    draw: (target) => self._draw(target, series)
+                    draw: (target) => self._draw(target)
                 })
             }],
             attached: ({ requestUpdate }) => {
                 self._requestUpdate = requestUpdate;
-                
-                // Подписываемся на скролл графика
-                const timeScale = self._cm.chart.timeScale();
-                if (timeScale && timeScale.subscribeVisibleLogicalRangeChange) {
-                    timeScale.subscribeVisibleLogicalRangeChange(() => {
-                        if (self._requestUpdate) self._requestUpdate();
-                    });
-                }
             },
             detached: () => {},
             updateAllViews: () => {},
@@ -65,7 +69,8 @@ class DailySeparator {
         console.log('✅ DailySeparator: примитив прикреплён');
     }
     
-    _draw(target, series) {
+    _draw(target) {
+        if (this._disabled) return;
         if (!this._enabled) return;
         
         const tf = this._cm.currentInterval;
@@ -76,7 +81,6 @@ class DailySeparator {
         
         target.useBitmapCoordinateSpace(scope => {
             const ctx = scope.context;
-            
             let prevDay = null;
             
             data.forEach(candle => {
@@ -86,7 +90,7 @@ class DailySeparator {
                     const timeScale = this._cm.chart.timeScale();
                     const x = timeScale.timeToCoordinate(candle.time);
                     
-                    if (x !== null) {
+                    if (x !== null && x > 0 && x < scope.mediaSize.width) {
                         ctx.save();
                         ctx.strokeStyle = this._hexToRgba(this._color, this._opacity);
                         ctx.lineWidth = this._lineWidth * scope.horizontalPixelRatio;
@@ -96,7 +100,6 @@ class DailySeparator {
                         else ctx.setLineDash([]);
                         
                         ctx.beginPath();
-                        // Отрисовка от начала до бесконечности (от 0 до высоты canvas)
                         ctx.moveTo(x, 0);
                         ctx.lineTo(x, scope.mediaSize.height);
                         ctx.stroke();
@@ -116,6 +119,7 @@ class DailySeparator {
     }
     
     updateSettings(settings) {
+        if (this._disabled) return;
         if (settings.enabled !== undefined) this._enabled = settings.enabled;
         if (settings.color) this._color = settings.color;
         if (settings.style) this._lineStyle = settings.style;
@@ -130,10 +134,13 @@ class DailySeparator {
             opacity: this._opacity
         }));
         
-        this.redraw();
+        if (this._primitive && this._primitive.requestRedraw) {
+            this._primitive.requestRedraw();
+        }
     }
     
     redraw() {
+        if (this._disabled) return;
         if (this._primitive && this._primitive.requestRedraw) {
             this._primitive.requestRedraw();
         }
