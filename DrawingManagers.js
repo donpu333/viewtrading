@@ -1,4 +1,5 @@
 
+
 class HorizontalRay {
     constructor(price, time, options = {}) {
         this.price = price;
@@ -417,36 +418,41 @@ _autoLoadRays() {
         });
     }
 
-    _handleContextMenu(e) {
-        e.preventDefault();
-        e.stopPropagation();
+   _handleContextMenu(e) {
+    e.preventDefault();
+    e.stopPropagation();
 
-        const rect = this._chartManager.chartContainer.getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const y = e.clientY - rect.top;
-        const hit = this.hitTest(x, y);
+    const rect = this._chartManager.chartContainer.getBoundingClientRect();
+    let x = e.clientX - rect.left;
+    let y = e.clientY - rect.top;
+    if (this._isMac && this._pixelRatio > 1) {
+        x *= this._pixelRatio;
+        y *= this._pixelRatio;
+    }
+    const hit = this.hitTest(x, y);
 
-        if (hit) {
-            if (this._selectedRay && this._selectedRay !== hit.ray) {
-                this._selectedRay.selected = false;
-                this._selectedRay.showDragPoint = false;
-                this._selectedRay.attached = false;
-            }
+    if (hit) {
+        if (this._selectedRay && this._selectedRay !== hit.ray) {
+            this._selectedRay.selected = false;
+            this._selectedRay.showDragPoint = false;
+            this._selectedRay.attached = false;
+        }
 
-            hit.ray.selected = true;
-            hit.ray.showDragPoint = true;
-            hit.ray.attached = false;
+        hit.ray.selected = true;
+        hit.ray.showDragPoint = true;
+        hit.ray.attached = false;
 
-            const rayX = this._chartManager.timeToCoordinate(hit.ray.time);
-            const rayY = this._chartManager.priceToCoordinate(hit.ray.price);
-            if (rayX !== null && rayY !== null) {
-                hit.ray.dragPointX = rayX;
-                hit.ray.dragPointY = rayY;
-            }
+        const rayX = this._chartManager.timeToCoordinate(hit.ray.time);
+        const rayY = this._chartManager.priceToCoordinate(hit.ray.price);
+        if (rayX !== null && rayY !== null) {
+            hit.ray.dragPointX = rayX;
+            hit.ray.dragPointY = rayY;
+        }
 
-            this._selectedRay = hit.ray;
-            this._requestRedraw();
-
+        this._selectedRay = hit.ray;
+        this._requestRedraw();
+        
+        
             const menu = document.getElementById('drawingContextMenu');
             if (menu) {
                 document.getElementById('trendContextMenu').style.display = 'none';
@@ -490,262 +496,273 @@ _autoLoadRays() {
         }
     }
 
-    _setupEventListeners() {
-        const container = this._chartManager.chartContainer;
+   _setupEventListeners() {
+    const container = this._chartManager.chartContainer;
 
-        container.addEventListener('mousedown', (e) => {
-            if (e.button !== 0) return;
+    container.addEventListener('mousedown', (e) => {
+        if (e.button !== 0) return;
 
-            const rect = container.getBoundingClientRect();
-            const x = e.clientX - rect.left;
-            const y = e.clientY - rect.top;
-            const hit = this.hitTest(x, y);
+        const rect = container.getBoundingClientRect();
+        let x = e.clientX - rect.left;
+        let y = e.clientY - rect.top;
+        if (this._isMac && this._pixelRatio > 1) {
+            x *= this._pixelRatio;
+            y *= this._pixelRatio;
+        }
+        const hit = this.hitTest(x, y);
 
-            if (hit) {
-                e.preventDefault();
-                e.stopPropagation();
-
-                if (this._selectedRay && this._selectedRay === hit.ray) {
-                    this._selectedRay.selected = false;
-                    this._selectedRay.showDragPoint = false;
-                    this._selectedRay.attached = false;
-                    this._selectedRay = null;
-                    this._requestRedraw();
-                    return;
-                }
-
-                if (this._selectedRay) {
-                    this._selectedRay.selected = false;
-                    this._selectedRay.showDragPoint = false;
-                    this._selectedRay.attached = false;
-                }
-
-                hit.ray.selected = true;
-                hit.ray.showDragPoint = true;
-                hit.ray.attached = true;
-                this._selectedRay = hit.ray;
-
-                const rayX = this._chartManager.timeToCoordinate(hit.ray.time);
-                const rayY = this._chartManager.priceToCoordinate(hit.ray.price);
-                if (rayX !== null && rayY !== null) {
-                    hit.ray.dragPointX = rayX;
-                    hit.ray.dragPointY = rayY;
-                }
-
-                this._potentialDrag = {
-                    ray: hit.ray,
-                    startX: x,
-                    startY: y,
-                    startPrice: hit.ray.price,
-                    startTime: hit.ray.time
-                };
-
-                this._requestRedraw();
-            } else {
-                const rayMenu = document.getElementById('drawingContextMenu');
-                if (rayMenu && rayMenu.style.display === 'flex') {
-                    const menuRect = rayMenu.getBoundingClientRect();
-                    const isClickInsideMenu = 
-                        e.clientX >= menuRect.left && e.clientX <= menuRect.right &&
-                        e.clientY >= menuRect.top && e.clientY <= menuRect.bottom;
-                    if (isClickInsideMenu) return;
-                }
-
-                if (this._dragRay) {
-                    this._dragRay.selected = false;
-                    this._dragRay.showDragPoint = false;
-                    this._dragRay.attached = false;
-                    this._dragRay = null;
-                }
-                if (this._selectedRay) {
-                    this._selectedRay.selected = false;
-                    this._selectedRay.showDragPoint = false;
-                    this._selectedRay.attached = false;
-                    this._selectedRay = null;
-                }
-                
-                if (rayMenu) rayMenu.style.display = 'none';
-                
-                this._requestRedraw();
-            }
-        });
-
-        container.addEventListener('mousemove', (e) => {
-            const rect = container.getBoundingClientRect();
-            const x = e.clientX - rect.left;
-            const y = e.clientY - rect.top;
-
-            this._lastMouseX = x;
-            this._lastMouseY = y;
-
-            if (this._potentialDrag && !this._isDragging) {
-                const dx = Math.abs(x - this._potentialDrag.startX);
-                const dy = Math.abs(y - this._potentialDrag.startY);
-
-                if (dx > this._dragThreshold || dy > this._dragThreshold) {
-                    this._isDragging = true;
-                    this._dragRay = this._potentialDrag.ray;
-                    this._dragRay.dragging = true;
-
-                    this._dragStartX = this._potentialDrag.startX;
-                    this._dragStartY = this._potentialDrag.startY;
-                    this._dragStartPrice = this._potentialDrag.startPrice;
-                    this._dragStartTime = this._potentialDrag.startTime;
-
-                    container.style.cursor = 'grabbing';
-                }
-            }
-
-            if (this._isDragging && this._dragRay) {
-                e.preventDefault();
-                e.stopPropagation();
-
-                const deltaX = x - this._dragStartX;
-                const deltaY = y - this._dragStartY;
-
-                const rayX = this._chartManager.timeToCoordinate(this._dragStartTime);
-                const rayY = this._chartManager.priceToCoordinate(this._dragStartPrice);
-
-                if (rayX !== null && rayY !== null) {
-                    const newX = rayX + deltaX;
-                    const newY = rayY + deltaY;
-
-                    const newPrice = this._chartManager.coordinateToPrice(newY);
-                    const newTime = this._chartManager.coordinateToTime(newX);
-
-                    if (newPrice !== null) {
-                        this._dragRay.price = newPrice;
-                    }
-                  if (newTime !== null) {
-    this._dragRay.time = newTime;
-    this._dragRay.anchorTime = newTime;  // ТОЛЬКО ЭТУ СТРОКУ ДОБАВЬ
-}
-                    const newRayX = this._chartManager.timeToCoordinate(this._dragRay.time);
-                    const newRayY = this._chartManager.priceToCoordinate(this._dragRay.price);
-
-                    if (newRayX !== null && newRayY !== null) {
-                        this._dragRay.dragPointX = newRayX;
-                        this._dragRay.dragPointY = newRayY;
-                    }
-
-                    this._requestRedraw();
-                }
-            } else {
-                const raysForCurrent = this._getRaysForCurrentSymbol();
-                let hit = null;
-                
-                for (const item of raysForCurrent) {
-                    if (!item.primitive || !item.primitive._paneView || !item.primitive._paneView._renderer) continue;
-                    const hitType = item.primitive._paneView._renderer.hitTest(x, y);
-                    if (hitType) {
-                        hit = { ray: item.ray, type: hitType };
-                        break;
-                    }
-                }
-                
-                const hitRay = hit ? hit.ray : null;
-
-                if (hitRay) {
-                    container.style.cursor = 'grab';
-                } else {
-                    container.style.cursor = 'crosshair';
-                }
-
-                if (this._hoveredRay !== hitRay) {
-                    if (this._hoveredRay) {
-                        this._hoveredRay.hovered = false;
-                    }
-                    this._hoveredRay = hitRay;
-                    if (hitRay) {
-                        hitRay.hovered = true;
-                    }
-                    this._requestRedraw();
-                }
-            }
-        });
-
-        container.addEventListener('mouseup', (e) => {
-            this._potentialDrag = null;
-
-            if (this._isDragging) {
-                e.preventDefault();
-                e.stopPropagation();
-
-                this._isDragging = false;
-                if (this._dragRay) {
-                    this._dragRay.dragging = false;
-                    this._dragRay.attached = false;
-                    
-                    // FIX: обновляем anchorTime на новое время (привязываем к ближайшей свече)
-                    const newAnchor = this._findClosestCandleTime(this._dragRay.time);
-                    if (newAnchor) {
-                        this._dragRay.anchorTime = newAnchor;
-                    }
-                    
-                    this._saveRays();
-                    this._dragRay = null;
-                    this._requestRedraw();
-                }
-
-                container.style.cursor = 'crosshair';
-
-                setTimeout(() => {
-                    const moveEvent = new MouseEvent('mousemove', {
-                        clientX: e.clientX,
-                        clientY: e.clientY
-                    });
-                    container.dispatchEvent(moveEvent);
-                }, 10);
-            }
-        });
-
-        container.addEventListener('mouseleave', () => {
-            if (this._hoveredRay) {
-                this._hoveredRay.hovered = false;
-                this._hoveredRay = null;
-                this._requestRedraw();
-            }
-            container.style.cursor = 'crosshair';
-        });
-
-        container.addEventListener('click', (e) => {
-            if (this._isDragging) {
-                e.preventDefault();
-                e.stopPropagation();
-            }
-            if (this._isDrawingMode) {
-                this._handleChartClick(e);
-            }
-        });
-
-        container.addEventListener('contextmenu', (e) => {
-            this._handleContextMenu(e);
-        });
-
-        container.addEventListener('dblclick', (e) => {
+        if (hit) {
             e.preventDefault();
             e.stopPropagation();
-            e.stopImmediatePropagation();
+
+            if (this._selectedRay && this._selectedRay === hit.ray) {
+                this._selectedRay.selected = false;
+                this._selectedRay.showDragPoint = false;
+                this._selectedRay.attached = false;
+                this._selectedRay = null;
+                this._requestRedraw();
+                return;
+            }
+
+            if (this._selectedRay) {
+                this._selectedRay.selected = false;
+                this._selectedRay.showDragPoint = false;
+                this._selectedRay.attached = false;
+            }
+
+            hit.ray.selected = true;
+            hit.ray.showDragPoint = true;
+            hit.ray.attached = true;
+            this._selectedRay = hit.ray;
+
+            const rayX = this._chartManager.timeToCoordinate(hit.ray.time);
+            const rayY = this._chartManager.priceToCoordinate(hit.ray.price);
+            if (rayX !== null && rayY !== null) {
+                hit.ray.dragPointX = rayX;
+                hit.ray.dragPointY = rayY;
+            }
+
+            this._potentialDrag = {
+                ray: hit.ray,
+                startX: x,
+                startY: y,
+                startPrice: hit.ray.price,
+                startTime: hit.ray.time
+            };
+
+            this._requestRedraw();
+        } else {
+            const rayMenu = document.getElementById('drawingContextMenu');
+            if (rayMenu && rayMenu.style.display === 'flex') {
+                const menuRect = rayMenu.getBoundingClientRect();
+                const isClickInsideMenu = 
+                    e.clientX >= menuRect.left && e.clientX <= menuRect.right &&
+                    e.clientY >= menuRect.top && e.clientY <= menuRect.bottom;
+                if (isClickInsideMenu) return;
+            }
+
+            if (this._dragRay) {
+                this._dragRay.selected = false;
+                this._dragRay.showDragPoint = false;
+                this._dragRay.attached = false;
+                this._dragRay = null;
+            }
+            if (this._selectedRay) {
+                this._selectedRay.selected = false;
+                this._selectedRay.showDragPoint = false;
+                this._selectedRay.attached = false;
+                this._selectedRay = null;
+            }
             
-            const rect = container.getBoundingClientRect();
-            const x = e.clientX - rect.left;
-            const y = e.clientY - rect.top;
-            const hit = this.hitTest(x, y);
+            if (rayMenu) rayMenu.style.display = 'none';
             
-            if (hit) {
-                this.deleteRay(hit.ray.id);
-                
-                if (this._selectedRay && this._selectedRay.id === hit.ray.id) {
-                    this._selectedRay = null;
+            this._requestRedraw();
+        }
+    });
+
+    container.addEventListener('mousemove', (e) => {
+        const rect = container.getBoundingClientRect();
+        let x = e.clientX - rect.left;
+        let y = e.clientY - rect.top;
+        if (this._isMac && this._pixelRatio > 1) {
+            x *= this._pixelRatio;
+            y *= this._pixelRatio;
+        }
+
+        this._lastMouseX = x;
+        this._lastMouseY = y;
+
+        if (this._potentialDrag && !this._isDragging) {
+            const dx = Math.abs(x - this._potentialDrag.startX);
+            const dy = Math.abs(y - this._potentialDrag.startY);
+
+            if (dx > this._dragThreshold || dy > this._dragThreshold) {
+                this._isDragging = true;
+                this._dragRay = this._potentialDrag.ray;
+                this._dragRay.dragging = true;
+
+                this._dragStartX = this._potentialDrag.startX;
+                this._dragStartY = this._potentialDrag.startY;
+                this._dragStartPrice = this._potentialDrag.startPrice;
+                this._dragStartTime = this._potentialDrag.startTime;
+
+                container.style.cursor = 'grabbing';
+            }
+        }
+
+        if (this._isDragging && this._dragRay) {
+            e.preventDefault();
+            e.stopPropagation();
+
+            const deltaX = x - this._dragStartX;
+            const deltaY = y - this._dragStartY;
+
+            const rayX = this._chartManager.timeToCoordinate(this._dragStartTime);
+            const rayY = this._chartManager.priceToCoordinate(this._dragStartPrice);
+
+            if (rayX !== null && rayY !== null) {
+                const newX = rayX + deltaX;
+                const newY = rayY + deltaY;
+
+                const newPrice = this._chartManager.coordinateToPrice(newY);
+                const newTime = this._chartManager.coordinateToTime(newX);
+
+                if (newPrice !== null) {
+                    this._dragRay.price = newPrice;
                 }
-                if (this._hoveredRay && this._hoveredRay.id === hit.ray.id) {
-                    this._hoveredRay = null;
+                if (newTime !== null) {
+                    this._dragRay.time = newTime;
+                    this._dragRay.anchorTime = newTime;
                 }
-                
+                const newRayX = this._chartManager.timeToCoordinate(this._dragRay.time);
+                const newRayY = this._chartManager.priceToCoordinate(this._dragRay.price);
+
+                if (newRayX !== null && newRayY !== null) {
+                    this._dragRay.dragPointX = newRayX;
+                    this._dragRay.dragPointY = newRayY;
+                }
+
                 this._requestRedraw();
             }
-        });
-    }
+        } else {
+            const raysForCurrent = this._getRaysForCurrentSymbol();
+            let hit = null;
+            
+            for (const item of raysForCurrent) {
+                if (!item.primitive || !item.primitive._paneView || !item.primitive._paneView._renderer) continue;
+                const hitType = item.primitive._paneView._renderer.hitTest(x, y);
+                if (hitType) {
+                    hit = { ray: item.ray, type: hitType };
+                    break;
+                }
+            }
+            
+            const hitRay = hit ? hit.ray : null;
+
+            if (hitRay) {
+                container.style.cursor = 'grab';
+            } else {
+                container.style.cursor = 'crosshair';
+            }
+
+            if (this._hoveredRay !== hitRay) {
+                if (this._hoveredRay) {
+                    this._hoveredRay.hovered = false;
+                }
+                this._hoveredRay = hitRay;
+                if (hitRay) {
+                    hitRay.hovered = true;
+                }
+                this._requestRedraw();
+            }
+        }
+    });
+
+    container.addEventListener('mouseup', (e) => {
+        this._potentialDrag = null;
+
+        if (this._isDragging) {
+            e.preventDefault();
+            e.stopPropagation();
+
+            this._isDragging = false;
+            if (this._dragRay) {
+                this._dragRay.dragging = false;
+                this._dragRay.attached = false;
+                
+                const newAnchor = this._findClosestCandleTime(this._dragRay.time);
+                if (newAnchor) {
+                    this._dragRay.anchorTime = newAnchor;
+                }
+                
+                this._saveRays();
+                this._dragRay = null;
+                this._requestRedraw();
+            }
+
+            container.style.cursor = 'crosshair';
+
+            setTimeout(() => {
+                const moveEvent = new MouseEvent('mousemove', {
+                    clientX: e.clientX,
+                    clientY: e.clientY
+                });
+                container.dispatchEvent(moveEvent);
+            }, 10);
+        }
+    });
+
+    container.addEventListener('mouseleave', () => {
+        if (this._hoveredRay) {
+            this._hoveredRay.hovered = false;
+            this._hoveredRay = null;
+            this._requestRedraw();
+        }
+        container.style.cursor = 'crosshair';
+    });
+
+    container.addEventListener('click', (e) => {
+        if (this._isDragging) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+        if (this._isDrawingMode) {
+            this._handleChartClick(e);
+        }
+    });
+
+    container.addEventListener('contextmenu', (e) => {
+        this._handleContextMenu(e);
+    });
+
+    container.addEventListener('dblclick', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        
+        const rect = container.getBoundingClientRect();
+        let x = e.clientX - rect.left;
+        let y = e.clientY - rect.top;
+        if (this._isMac && this._pixelRatio > 1) {
+            x *= this._pixelRatio;
+            y *= this._pixelRatio;
+        }
+        const hit = this.hitTest(x, y);
+        
+        if (hit) {
+            this.deleteRay(hit.ray.id);
+            
+            if (this._selectedRay && this._selectedRay.id === hit.ray.id) {
+                this._selectedRay = null;
+            }
+            if (this._hoveredRay && this._hoveredRay.id === hit.ray.id) {
+                this._hoveredRay = null;
+            }
+            
+            this._requestRedraw();
+        }
+    });
+}
 
     setDrawingMode(enabled) {
         this._isDrawingMode = enabled;
@@ -1383,7 +1400,6 @@ async loadRays() {
         this._requestRedraw();
     }
 } 
- 
 // ========== ТРЕНДОВАЯ ЛИНИЯ (ПОЛНОСТЬЮ ИСПРАВЛЕННАЯ) ==========
 class TrendLine {
     constructor(point1, point2, options = {}) {
