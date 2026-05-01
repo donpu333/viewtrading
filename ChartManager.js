@@ -1432,30 +1432,32 @@ setDataQuick(data, interval, symbol, exchange = 'binance', marketType = 'futures
             this.indicatorManager.loadIndicators();
         }
         
-             this.loadDrawingsForCurrentSymbol();
-        this.autoScale(); // <--- Вызываем СРАЗУ, без setTimeout
+        this.loadDrawingsForCurrentSymbol();
         
-        setTimeout(() => {
+        // =================================================================
+        // ИСПРАВЛЕНИЕ "ПАЛОК": Ждем 1 кадр (~16мс), чтобы ядро графика 
+        // гарантированно рассчитало внутренние границы цен перед автомасштабом
+        // =================================================================
+        requestAnimationFrame(() => {
+            this.autoScale(); 
             if (window.renderDrawings) window.renderDrawings();
-        }, 100);
+            this._updateMainChartHeight();
+        });
+        // =================================================================
         
         this._notifySymbolChange();
-        
-        setTimeout(() => {
-            this._updateMainChartHeight();
-        }, 150);
         
     } else {
         console.warn('setDataQuick: нет данных');
     }
+    
     this._lastTimeframe = interval;
 
-if (!window._dailySeparator) {
-    window._dailySeparator = new DailySeparator(this);
-} else {
-    window._dailySeparator.redraw();
-}
-
+    if (!window._dailySeparator) {
+        window._dailySeparator = new DailySeparator(this);
+    } else {
+        window._dailySeparator.redraw();
+    }
 }
 async loadDrawingsForCurrentSymbol() {
     // Небольшая задержка, чтобы серия точно была готова
@@ -1790,17 +1792,30 @@ _subscribeToPrice() {
     }
     // ДОБАВЬ ЭТОТ МЕТОД В ChartManager
 // Метод для вычисления точности из самих данных (Fallback)
-_inferPrecisionFromData() {
-    if (!this.chartData || this.chartData.length === 0) return 2;
-    const lastPrice = this.chartData[this.chartData.length - 1].close;
-    if (!lastPrice || lastPrice === 0) return 2;
-    
-    const str = lastPrice.toString();
-    if (str.includes('.')) {
-        return str.split('.')[1].length; // Считаем знаки после запятой
+    _inferPrecisionFromData() {
+        if (!this.chartData || this.chartData.length < 2) return 2;
+        
+        let minDiff = Infinity;
+        // Берем последние 20 свечей и ищем минимальную разницу между ценами
+        const slice = this.chartData.slice(-20);
+        for (const c of slice) {
+            const diffBody = Math.abs(c.close - c.open);
+            const diffWick = Math.abs(c.high - c.low);
+            if (diffBody > 0) minDiff = Math.min(minDiff, diffBody);
+            if (diffWick > 0) minDiff = Math.min(minDiff, diffWick);
+        }
+        
+        // Если все свечи с нулевым телом (доджи), берем разницу высоких/низких
+        if (minDiff === Infinity) return 2;
+        
+        // Считаем количество знаков после запятой в минимальной разнице
+        const str = minDiff.toFixed(10).replace(/0+$/, ''); // Убираем нули в конце
+        if (str.includes('.')) {
+            return str.split('.')[1].length;
+        }
+        
+        return 2;
     }
-    return 2; // Дефолт для целых чисел
-}
 
 // Обновленный метод с обработкой ошибок и принудительным обновлением
 applyPriceFormat(precision) {
