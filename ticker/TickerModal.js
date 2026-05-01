@@ -5,7 +5,7 @@ class TickerModal {
         this.modalAllResults = [];
     }
     
-    setupModal() {
+        setupModal() {
         const modal = document.getElementById('addInstrumentModal');
         const openBtn = document.getElementById('addInstrumentBtn');
         const closeBtn = document.getElementById('modalClose');
@@ -99,15 +99,24 @@ class TickerModal {
             this.addNextBatch();
         });
 
+        // Очищаем инпут от старых listeners
         const oldInput = modalSearch;
         const newInput = oldInput.cloneNode(true);
         oldInput.parentNode.replaceChild(newInput, oldInput);
         const modalSearchClean = document.getElementById('modalSearchInput');
 
+        // Флаг, чтобы input не конфликтовал с keydown
+        let isManualUpdate = false;
+
+        // Правильная карта по ФИЗИЧЕСКОМУ расположению кнопок (QWERTY -> ЙЦУКЕН)
+        const hardwareLayoutMap = {
+            'ё': '`', 'й': 'q', 'ц': 'w', 'у': 'e', 'к': 'r', 'е': 't', 'н': 'y', 'г': 'u', 'ш': 'i', 'щ': 'o', 'з': 'p', 'х': '[', 'ъ': ']',
+            'ф': 'a', 'ы': 's', 'в': 'd', 'а': 'f', 'п': 'g', 'р': 'h', 'о': 'j', 'л': 'k', 'д': 'l', 'ж': ';', 'э': "'",
+            'я': 'z', 'ч': 'x', 'с': 'c', 'м': 'v', 'и': 'b', 'т': 'n', 'ь': 'm', 'б': ',', 'ю': '.'
+        };
+
         modalSearchClean.addEventListener('keydown', (e) => {
-            if (e.key === 'Backspace' || e.key === 'Delete' || e.key === 'ArrowLeft' || 
-                e.key === 'ArrowRight' || e.key === 'Home' || e.key === 'End' || 
-                e.key === 'Tab' || e.key === 'Enter' || e.key === 'Escape') {
+            if (['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'Tab', 'Enter', 'Escape'].includes(e.key)) {
                 return;
             }
             
@@ -115,55 +124,50 @@ class TickerModal {
                 return;
             }
 
-            e.preventDefault();
-            
-            let char = e.key;
-            
-            const ruToEng = {
-                'й': 'q', 'ц': 'w', 'у': 'e', 'к': 'r', 'е': 'e', 'н': 'n',
-                'г': 'g', 'ш': 'i', 'щ': 'o', 'з': 'p', 'х': 'h', 'ъ': ']',
-                'ф': 'a', 'ы': 's', 'в': 'v', 'а': 'a', 'п': 'p', 'р': 'r',
-                'о': 'o', 'л': 'l', 'д': 'd', 'ж': ';', 'э': "'",
-                'я': 'z', 'ч': 'x', 'с': 's', 'м': 'm', 'и': 'i', 'т': 't',
-                'ь': 'b', 'б': ',', 'ю': '.',
-                'Й': 'Q', 'Ц': 'W', 'У': 'E', 'К': 'R', 'Е': 'E', 'Н': 'N',
-                'Г': 'G', 'Ш': 'I', 'Щ': 'O', 'З': 'P', 'Х': 'H', 'Ъ': ']',
-                'Ф': 'A', 'Ы': 'S', 'В': 'V', 'А': 'A', 'П': 'P', 'Р': 'R',
-                'О': 'O', 'Л': 'L', 'Д': 'D', 'Ж': ';', 'Э': "'",
-                'Я': 'Z', 'Ч': 'X', 'С': 'S', 'М': 'M', 'И': 'I', 'Т': 'T',
-                'Ь': 'B', 'Б': ',', 'Ю': '.'
-            };
-            
-            if (ruToEng[char]) {
-                char = ruToEng[char];
-            }
-            
-            if (char.length === 1 && char.match(/[a-z]/i)) {
-                char = char.toUpperCase();
-            }
+            if (e.key.length === 1) {
+                e.preventDefault();
+                
+                let char = e.key;
+                if (hardwareLayoutMap[char]) {
+                    char = hardwareLayoutMap[char];
+                }
 
-            const input = e.target;
-            const start = input.selectionStart;
-            const end = input.selectionEnd;
-            const value = input.value;
-            
-            input.value = value.substring(0, start) + char + value.substring(end);
-            input.selectionStart = input.selectionEnd = start + 1;
-            
-            this.parent.state.modalSearchQuery = input.value;
-            this.parent.state.modalPage = 0;
-            
-            if (this.searchTimeout) clearTimeout(this.searchTimeout);
-            this.searchTimeout = setTimeout(() => {
-                this.updateModalResults(true);
-            }, 300);
+                char = char.toUpperCase();
+
+                const input = e.target;
+                const start = input.selectionStart;
+                const end = input.selectionEnd;
+                const value = input.value;
+                
+                // Поднимаем флаг! Говорим обработчику input не вмешиваться
+                isManualUpdate = true;
+                input.value = value.substring(0, start) + char + value.substring(end);
+                input.selectionStart = input.selectionEnd = start + 1;
+                isManualUpdate = false; // Опускаем флаг
+                
+                this.parent.state.modalSearchQuery = input.value;
+                this.parent.state.modalPage = 0;
+                
+                if (this.searchTimeout) clearTimeout(this.searchTimeout);
+                this.searchTimeout = setTimeout(() => {
+                    this.updateModalResults(true);
+                }, 300);
+            }
         });
 
+        // Этот слушатель срабатывает ТОЛЬКО при вставке мышью (Ctrl+V)
         modalSearchClean.addEventListener('input', (e) => {
+            // Если текст изменил keydown - игнорируем!
+            if (isManualUpdate) return;
+
             const input = e.target;
             const cursor = input.selectionStart;
             
-            input.value = input.value.toUpperCase();
+            // Заменяем русские буквы на английские даже во вставленном тексте
+            let val = input.value;
+            val = val.split('').map(c => hardwareLayoutMap[c] || c).join('');
+            
+            input.value = val.toUpperCase();
             input.setSelectionRange(cursor, cursor);
             
             this.parent.state.modalSearchQuery = input.value;
