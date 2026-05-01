@@ -611,9 +611,7 @@ updatePricePrecision(symbol, exchange, marketType) {
             
             // ==========================================
             // ВСТАВЛЕННЫЙ ВЫЗОВ ПЕРЕРИСОВКИ ТАЙМЕРА
-            if (this.timerManager) {
-                this.timerManager.forceRedrawOnDataReady();
-            }
+          
             // ==========================================
 
             const pairDisplay = document.getElementById('pairDisplay');
