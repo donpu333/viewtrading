@@ -369,7 +369,7 @@ async loadSymbol(symbol, exchange, marketType, externalSignal = null) {
             }
             
             this.chartManager.setDataQuick(cached.data, this.chartManager.currentInterval, symbol, exchange, marketType);
-            this.chartManager.updatePricePrecision(symbol, exchange, marketType);
+          
             
             this.chartManager.currentSymbol = symbol;
             this.chartManager.currentExchange = exchange;
@@ -431,7 +431,7 @@ async loadSymbol(symbol, exchange, marketType, externalSignal = null) {
             }
             
             this.chartManager.setDataQuick(data, this.chartManager.currentInterval, symbol, exchange, marketType);
-            this.chartManager.updatePricePrecision(symbol, exchange, marketType);
+         
             
             this.chartManager.currentSymbol = symbol;
             this.chartManager.currentExchange = exchange;
