@@ -13,7 +13,6 @@ class WatchlistManager {
     }
 
     async _waitForDBAndLoad() {
-        // Ждём готовности IndexedDB
         if (!window.db || !window.dbReady) {
             console.log('⏳ WatchlistManager: жду IndexedDB...');
             await new Promise((resolve) => {
@@ -50,8 +49,13 @@ class WatchlistManager {
             if (!saved) {
                 const localData = localStorage.getItem('watchlists');
                 if (localData) {
-                    saved = JSON.parse(localData);
-                    console.log('📋 Вотчлисты загружены из localStorage (fallback)');
+                    try {
+                        saved = JSON.parse(localData);
+                        console.log('📋 Вотчлисты загружены из localStorage (fallback)');
+                    } catch (parseErr) {
+                        console.error('❌ Ошибка парсинга localStorage:', parseErr);
+                        localStorage.removeItem('watchlists'); // Удаляем битый кэш
+                    }
                 }
             }
             
@@ -93,15 +97,12 @@ class WatchlistManager {
                     value: data,
                     timestamp: Date.now()
                 });
-                console.log('📋 Вотчлисты сохранены в IndexedDB');
-                return true;
+                return true; // Убрал console.log отсюда, чтобы не спамить при каждом дебаунсе
             } catch (e) {
                 console.error('❌ Ошибка сохранения в IndexedDB:', e);
             }
         }
-        // Fallback на localStorage
         localStorage.setItem('watchlists', JSON.stringify(data));
-        console.log('📋 Вотчлисты сохранены в localStorage');
         return false;
     }
 
@@ -125,10 +126,8 @@ class WatchlistManager {
         await this._saveToDB(data);
     }
 
-    // ========== СИНХРОНИЗАЦИЯ ==========
-
     async syncActiveListFromPanel() {
-        await this._initPromise; // ждём загрузки
+        await this._initPromise;
         const list = this.lists.get(this.activeListId);
         if (!list) return;
         const panelSymbols = this.tickerPanel.state.customSymbols;
@@ -137,11 +136,8 @@ class WatchlistManager {
             this.renderCache.delete(this.activeListId);
             await this._saveNow();
             this.renderDropdown();
-            console.log('🔄 Вотчлист синхронизирован с панелью');
         }
     }
-
-    // ========== CRUD СПИСКОВ ==========
 
     async createList(name) {
         await this._initPromise;
@@ -186,8 +182,6 @@ class WatchlistManager {
         this.renderDropdown();
         return true;
     }
-
-    // ========== АКТИВАЦИЯ ==========
 
     async activateList(listId) {
         await this._initPromise;
@@ -239,11 +233,14 @@ class WatchlistManager {
         this.tickerPanel.renderTickerList();
         this.tickerPanel.updateModalCount();
         this.renderDropdown();
-        this.fetchPricesForActiveList();
         this.closeDropdown();
-    }
 
-    // ========== УПРАВЛЕНИЕ СИМВОЛАМИ ==========
+        // ИСПРАВЛЕНИЕ: Даём панели 50мс на инициализацию внутренних переменных (tickersMap),
+        // и только потом запрашиваем цены по сети. Иначе цены не найдут для кого обновляться.
+        setTimeout(() => {
+            this.fetchPricesForActiveList();
+        }, 50);
+    }
 
     async addSymbolToActiveList(symbol, exchange, marketType) {
         await this._initPromise;
@@ -258,31 +255,28 @@ class WatchlistManager {
         }
     }
 
-    // ========== ДОБАВЛЕНИЕ В ЛЮБОЙ СПИСОК ==========
-
-async addSymbolToList(listId, symbol, exchange, marketType) {
-    await this._initPromise;
-    const list = this.lists.get(listId);
-    if (!list) return false;
-    
-    const key = `${symbol}:${exchange}:${marketType}`;
-    if (!list.symbols.includes(key)) {
-        list.symbols.push(key);
-        this.renderCache.delete(listId);
-        this.saveToStorage();
-        this.renderDropdown();
+    async addSymbolToList(listId, symbol, exchange, marketType) {
+        await this._initPromise;
+        const list = this.lists.get(listId);
+        if (!list) return false;
         
-        // Если добавляем в активный список — сразу добавляем на панель
-        if (listId === this.activeListId) {
-            this.tickerPanel.addSymbol(symbol, true, exchange, marketType, true, false, true);
-            this.fetchPricesForActiveList();
+        const key = `${symbol}:${exchange}:${marketType}`;
+        if (!list.symbols.includes(key)) {
+            list.symbols.push(key);
+            this.renderCache.delete(listId);
+            this.saveToStorage();
+            this.renderDropdown();
+            
+            if (listId === this.activeListId) {
+                this.tickerPanel.addSymbol(symbol, true, exchange, marketType, true, false, true);
+                // ИСПРАВЛЕНИЕ: Тот же фикс для единичного добавления
+                setTimeout(() => this.fetchPricesForActiveList(), 50);
+            }
+            
+            return true;
         }
-        
-        return true;
+        return false;
     }
-    return false;
-}
-
 
     async removeSymbolFromActiveList(symbol, exchange, marketType) {
         await this._initPromise;
@@ -307,8 +301,6 @@ async addSymbolToList(listId, symbol, exchange, marketType) {
         this.saveToStorage();
         this.renderDropdown();
     }
-
-    // ========== РЕНДЕР ДРОПДАУНА ==========
 
     renderDropdown() {
         const container = document.getElementById('watchlistDropdown');
@@ -433,8 +425,6 @@ async addSymbolToList(listId, symbol, exchange, marketType) {
         }
     }
 
-    // ========== DIALOG PROMPTS ==========
-
     createListPrompt() {
         const name = prompt('Название нового списка:');
         if (name && name.trim()) {
@@ -455,11 +445,8 @@ async addSymbolToList(listId, symbol, exchange, marketType) {
         if (confirm(`Удалить список «${list.name}»?`)) this.deleteList(listId);
     }
 
-    // ========== ЗАГРУЗКА ЦЕН ==========
-
     async initializeWithPriority() {
         await this._initPromise;
-        console.log('📋 WatchlistManager: приоритетная загрузка');
         this.renderDropdown();
 
         const activeList = this.lists.get(this.activeListId);
