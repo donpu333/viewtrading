@@ -5368,6 +5368,7 @@ class TextPrimitive {
 }
 
 // ========== ПОЛНЫЙ TextManager (MAC ИСПРАВЛЕН) ==========
+// ========== ПОЛНЫЙ TextManager (MAC ИСПРАВЛЕН) ==========
 class TextManager {
     constructor(chartManager) {
         this._isMac = /Mac/.test(navigator.userAgent);
@@ -5734,22 +5735,175 @@ class TextManager {
         this.setDrawingMode(false);
     }
 
-    _snapToPrice(price, time) { /* без изменений */ return { price, time, anchorCandle: null }; }
-    _findClosestCandleTime(time) { /* без изменений */ return time; }
+    _snapToPrice(price, time) {
+        if (!this._chartManager.chartData.length) return { price, time, anchorCandle: null };
+        const data = this._chartManager.chartData;
+        let closestCandle;
+        if (time <= data[0].time) closestCandle = data[0];
+        else if (time >= data[data.length-1].time) closestCandle = data[data.length-1];
+        else {
+            closestCandle = data[0];
+            let minTimeDiff = Math.abs(data[0].time - time);
+            for (let i = 1; i < data.length; i++) {
+                const diff = Math.abs(data[i].time - time);
+                if (diff < minTimeDiff) { minTimeDiff = diff; closestCandle = data[i]; }
+            }
+        }
+        const priceY = this._chartManager.priceToCoordinate(price);
+        const highY = this._chartManager.priceToCoordinate(closestCandle.high);
+        const lowY = this._chartManager.priceToCoordinate(closestCandle.low);
+        const closeY = this._chartManager.priceToCoordinate(closestCandle.close);
+        if (priceY === null || highY === null) return { price, time, anchorCandle: null };
+        const dHighPx = Math.abs(highY - priceY), dLowPx = Math.abs(lowY - priceY), dClosePx = Math.abs(closeY - priceY);
+        let snappedPrice = price, anchorType = null;
+        const MAGNET_THRESHOLD = 150;
+        const minDistPx = Math.min(dHighPx, dLowPx, dClosePx);
+        if (minDistPx < MAGNET_THRESHOLD) {
+            if (minDistPx === dHighPx) { snappedPrice = closestCandle.high; anchorType = 'high'; }
+            else if (minDistPx === dLowPx) { snappedPrice = closestCandle.low; anchorType = 'low'; }
+            else { snappedPrice = closestCandle.close; anchorType = 'close'; }
+        }
+        return { price: snappedPrice, time: closestCandle.time, anchorCandle: { time: closestCandle.time, type: anchorType, price: snappedPrice } };
+    }
 
-    _showSettings(text) { /* без изменений */ }
-    _renderColorGrid(gridId, colorBoxId, hexInputId, selectedColor) { /* без изменений */ }
-    _renderTimeframeCheckboxes(text) { /* без изменений */ }
+    _findClosestCandleTime(time) {
+        if (!this._chartManager.chartData.length) return time;
+        const data = this._chartManager.chartData;
+        if (time <= data[0].time) return data[0].time;
+        if (time >= data[data.length-1].time) return data[data.length-1].time;
+        let closestCandle = data[0];
+        let minDiff = Math.abs(data[0].time - time);
+        for (let i = 1; i < data.length; i++) {
+            const diff = Math.abs(data[i].time - time);
+            if (diff < minDiff) { minDiff = diff; closestCandle = data[i]; }
+        }
+        return closestCandle.time;
+    }
+
+    _showSettings(text) {
+        const settings = document.getElementById('textSettings');
+        if (!settings) return;
+        document.getElementById('textCurrentColorBox').style.backgroundColor = text.options.color;
+        document.getElementById('textHexInputInline').value = text.options.color;
+        document.getElementById('textBgColorBox').style.backgroundColor = text.options.bgColor;
+        document.getElementById('textBgHexInput').value = text.options.bgColor;
+        document.getElementById('textFontSize').value = text.options.fontSize;
+        document.getElementById('textBold').checked = text.options.bold || false;
+        document.getElementById('textOpacity').value = Math.round(text.options.opacity * 100);
+        document.getElementById('textOpacityValue').textContent = document.getElementById('textOpacity').value + '%';
+        document.getElementById('textBgOpacity').value = Math.round(text.options.bgOpacity * 100);
+        document.getElementById('textBgOpacityValue').textContent = document.getElementById('textBgOpacity').value + '%';
+        document.getElementById('textContentInput').value = text.text;
+        setTimeout(() => { const ta = document.getElementById('textContentInput'); if (ta) { ta.focus(); ta.select(); } }, 200);
+        this._renderColorGrid('textInlineColorsGrid', 'textCurrentColorBox', 'textHexInputInline', text.options.color);
+        this._renderColorGrid('textBgColorsGrid', 'textBgColorBox', 'textBgHexInput', text.options.bgColor);
+        this._renderTimeframeCheckboxes(text);
+        settings.style.display = 'block';
+        settings.style.left = '50%';
+        settings.style.top = '50%';
+        settings.style.transform = 'translate(-50%, -50%)';
+        settings.addEventListener('mousedown', (e) => e.stopPropagation());
+        settings.addEventListener('mousemove', (e) => e.stopPropagation());
+        settings.addEventListener('mouseup', (e) => e.stopPropagation());
+        settings.addEventListener('click', (e) => e.stopPropagation());
+        let header = settings.querySelector('.settings-header');
+        if (!header) {
+            header = document.createElement('div'); header.className = 'settings-header';
+            header.style.cssText = 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid #404040;';
+            const title = document.createElement('span'); title.textContent = 'Настройки текста'; title.style.color = '#FFFFFF'; title.style.fontSize = '14px'; title.style.fontWeight = 'bold';
+            const closeBtn = document.createElement('button'); closeBtn.innerHTML = '✕';
+            closeBtn.style.cssText = 'background: transparent; border: none; color: #B0B0B0; font-size: 18px; cursor: pointer; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; border-radius: 4px;';
+            closeBtn.onmouseover = () => closeBtn.style.background = '#404040'; closeBtn.onmouseout = () => closeBtn.style.background = 'transparent';
+            closeBtn.onclick = (e) => { e.stopPropagation(); settings.style.display = 'none'; };
+            header.appendChild(title); header.appendChild(closeBtn); settings.insertBefore(header, settings.firstChild);
+        }
+        const closeOnOutsideClick = (e) => { if (!settings.contains(e.target) && settings.style.display === 'block') { settings.style.display = 'none'; document.removeEventListener('mousedown', closeOnOutsideClick); } };
+        setTimeout(() => document.addEventListener('mousedown', closeOnOutsideClick), 100);
+        const textPanel = document.getElementById('textEditPanel'), stylePanel = document.getElementById('textStylePanel'), visibilityPanel = document.getElementById('textVisibilityPanel');
+        const tabs = document.querySelectorAll('#textSettings .settings-tab');
+        tabs.forEach(tab => { tab.classList.remove('active'); if (tab.dataset.textSettingsTab === 'text') tab.classList.add('active'); });
+        if (textPanel) textPanel.classList.add('active');
+        if (stylePanel) stylePanel.classList.remove('active');
+        if (visibilityPanel) visibilityPanel.classList.remove('active');
+        tabs.forEach(tab => { const nt = tab.cloneNode(true); tab.parentNode.replaceChild(nt, tab); });
+        document.querySelectorAll('#textSettings .settings-tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                document.querySelectorAll('#textSettings .settings-tab').forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+                if (textPanel) textPanel.classList.remove('active');
+                if (stylePanel) stylePanel.classList.remove('active');
+                if (visibilityPanel) visibilityPanel.classList.remove('active');
+                if (tab.dataset.textSettingsTab === 'text' && textPanel) textPanel.classList.add('active');
+                else if (tab.dataset.textSettingsTab === 'style' && stylePanel) stylePanel.classList.add('active');
+                else if (tab.dataset.textSettingsTab === 'visibility' && visibilityPanel) visibilityPanel.classList.add('active');
+            });
+        });
+        const saveBtn = document.getElementById('textSaveSettings');
+        if (saveBtn) { const nsb = saveBtn.cloneNode(true); saveBtn.parentNode.replaceChild(nsb, saveBtn); nsb.addEventListener('click', () => { text.updateOptions({ color: document.getElementById('textCurrentColorBox').style.backgroundColor, bgColor: document.getElementById('textBgColorBox').style.backgroundColor, fontSize: parseInt(document.getElementById('textFontSize').value), bold: document.getElementById('textBold').checked, opacity: parseInt(document.getElementById('textOpacity').value) / 100, bgOpacity: parseInt(document.getElementById('textBgOpacity').value) / 100, text: document.getElementById('textContentInput').value }); this._requestRedraw(); settings.style.display = 'none'; this._saveTexts(); }); }
+        const deleteBtn = document.getElementById('textDeleteDrawing');
+        if (deleteBtn) { const ndb = deleteBtn.cloneNode(true); deleteBtn.parentNode.replaceChild(ndb, deleteBtn); ndb.addEventListener('click', () => { this.deleteText(text.id); settings.style.display = 'none'; this._requestRedraw(); }); }
+    }
+
+    _renderColorGrid(gridId, colorBoxId, hexInputId, selectedColor) {
+        const grid = document.getElementById(gridId); if (!grid) return;
+        const colors = ['#FFFFFF','#EF5350','#26A69A','#FFA726','#AB47BC','#5C6BC0','#66BB6A','#FF7043','#7E57C2','#42A5F5','#EC407A','#FFCA28','#8D6E63','#B0BEC5','#000000','#F44336','#E91E63','#9C27B0','#673AB7','#3F51B5','#2196F3','#03A9F4','#00BCD4','#009688','#4CAF50'];
+        grid.innerHTML = '';
+        colors.forEach(color => { const sq = document.createElement('div'); sq.className = 'color-square'; sq.style.backgroundColor = color; if (color === selectedColor) sq.classList.add('selected'); sq.onclick = () => { grid.querySelectorAll('.color-square').forEach(s => s.classList.remove('selected')); sq.classList.add('selected'); document.getElementById(colorBoxId).style.backgroundColor = color; document.getElementById(hexInputId).value = color; }; grid.appendChild(sq); });
+        const addBtnId = gridId === 'textInlineColorsGrid' ? 'textAddColorInline' : 'textBgAddColor';
+        const addBtn = document.getElementById(addBtnId), hexInput = document.getElementById(hexInputId);
+        if (addBtn && hexInput) { addBtn.onclick = () => { let h = hexInput.value.trim(); if (!h.startsWith('#')) h = '#' + h; if (/^#[0-9A-F]{6}$/i.test(h)) { const sq = document.createElement('div'); sq.className = 'color-square'; sq.style.backgroundColor = h; sq.onclick = () => { grid.querySelectorAll('.color-square').forEach(s => s.classList.remove('selected')); sq.classList.add('selected'); document.getElementById(colorBoxId).style.backgroundColor = h; hexInput.value = h; }; grid.appendChild(sq); grid.querySelectorAll('.color-square').forEach(s => s.classList.remove('selected')); sq.classList.add('selected'); document.getElementById(colorBoxId).style.backgroundColor = h; } }; }
+    }
+
+    _renderTimeframeCheckboxes(text) {
+        const container = document.getElementById('textTimeframeCheckboxList'); if (!container) return;
+        const tfLabels = { '1m':'1 минута','3m':'3 минуты','5m':'5 минут','15m':'15 минут','30m':'30 минут','1h':'1 час','4h':'4 часа','6h':'6 часов','12h':'12 часов','1d':'1 день','1w':'1 неделя','1M':'1 месяц' };
+        let html = ''; const timeframes = ['1m','3m','5m','15m','30m','1h','4h','6h','12h','1d','1w','1M'];
+        timeframes.forEach(tf => { const isChecked = text.timeframeVisibility[tf] !== false; html += `<div class="timeframe-checkbox-item"><input type="checkbox" id="text_tf_${tf}_${text.id}" data-timeframe="${tf}" ${isChecked?'checked':''}><label>${tfLabels[tf]||tf}</label><span class="tf-badge">${tf}</span></div>`; });
+        container.innerHTML = html;
+        container.querySelectorAll('input[type="checkbox"]').forEach(cb => { cb.addEventListener('change', (e) => { text.timeframeVisibility[e.target.dataset.timeframe] = e.target.checked; }); });
+        const selectAll = document.getElementById('textSelectAllTimeframes'), deselectAll = document.getElementById('textDeselectAllTimeframes');
+        if (selectAll) { const ns = selectAll.cloneNode(true); selectAll.parentNode.replaceChild(ns, selectAll); ns.addEventListener('click', () => container.querySelectorAll('input').forEach(c => { c.checked = true; text.timeframeVisibility[c.dataset.timeframe] = true; })); }
+        if (deselectAll) { const nd = deselectAll.cloneNode(true); deselectAll.parentNode.replaceChild(nd, deselectAll); nd.addEventListener('click', () => container.querySelectorAll('input').forEach(c => { c.checked = false; text.timeframeVisibility[c.dataset.timeframe] = false; })); }
+    }
 
     _requestRedraw() { this._texts.forEach(item => { if (item.primitive?.requestRedraw) item.primitive.requestRedraw(); }); }
 
-    async _saveTexts() { /* без изменений */ }
+    async _saveTexts() {
+        if (this._texts.length === 0) return;
+        const promises = this._texts.map(item => window.db.put('drawings', { id: item.text.id, type: 'text', symbolKey: item.text.symbolKey, data: { text: item.text.text, time: item.text.time, anchorTime: item.text.anchorTime, price: item.text.price, options: item.text.options, timeframeVisibility: item.text.timeframeVisibility, anchorCandle: item.text.anchorCandle, symbol: item.text.symbol, exchange: item.text.exchange, marketType: item.text.marketType } }).catch(e => console.warn('Save text error:', e)));
+        await Promise.all(promises);
+        console.log(`💾 Saved ${this._texts.length} texts`);
+    }
 
-    async loadTexts() { /* без изменений */ }
+    async loadTexts() {
+        while (this._isLoading) { await new Promise(r => setTimeout(r, 50)); }
+        this._isLoading = true;
+        try {
+            await waitForReady([() => window.dbReady === true, () => this._chartManager?.chartData?.length > 0, () => !!(this._chartManager?.candleSeries || this._chartManager?.barSeries)]);
+            const currentKey = this._getCurrentSymbolKey();
+            console.log('📊 Loading texts for:', currentKey);
+            const allDrawings = await window.db.getByIndex('drawings', 'symbolKey', currentKey);
+            const textRecords = allDrawings.filter(d => d.type === 'text');
+            const series = this._chartManager.currentChartType === 'candle' ? this._chartManager.candleSeries : this._chartManager.barSeries;
+            const newTexts = [];
+            for (const rec of textRecords) {
+                try {
+                    const textDrawing = new TextDrawing(rec.data.text, rec.data.time, rec.data.price, rec.data.options);
+                    textDrawing.id = rec.id; textDrawing.symbolKey = rec.symbolKey; textDrawing.symbol = rec.data.symbol; textDrawing.exchange = rec.data.exchange; textDrawing.marketType = rec.data.marketType;
+                    textDrawing.anchorTime = rec.data.anchorTime || rec.data.time; textDrawing.timeframeVisibility = rec.data.timeframeVisibility || {}; textDrawing.anchorCandle = rec.data.anchorCandle || null;
+                    const primitive = new TextPrimitive(textDrawing, this._chartManager);
+                    series.attachPrimitive(primitive);
+                    newTexts.push({ text: textDrawing, primitive, series });
+                } catch (e) { console.warn('Failed to load text:', rec.id, e); }
+            }
+            this._texts.forEach(item => { try { item.series?.detachPrimitive(item.primitive); } catch(e) {} });
+            this._texts = newTexts; this._requestRedraw();
+            console.log(`✅ Loaded ${this._texts.length} texts for ${currentKey}`);
+        } catch (error) { console.error('❌ loadTexts failed:', error); } finally { this._isLoading = false; }
+    }
 
     syncWithNewTimeframe() {}
 }
-// DrawingManagers.js - в самом конце файла
 
 // ========== ГОРЯЧАЯ КЛАВИША ДЛЯ МАГНИТА ==========
 document.addEventListener('keydown', (e) => {
