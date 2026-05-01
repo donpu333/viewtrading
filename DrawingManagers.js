@@ -3527,8 +3527,7 @@ class RulerLineManager {
 
     syncWithNewTimeframe() {}
 }
-// ========== АЛЕРТ (ИСПРАВЛЕННЫЙ - НЕ ПРОПАДАЕТ ПРИ СМЕНЕ ТАЙМФРЕЙМА) ==========
-/ ========== АЛЕРТ (ИСПРАВЛЕННЫЙ - НЕ ПРОПАДАЕТ ПРИ СМЕНЕ ТАЙМФРЕЙМА) ==========
+
 class AlertLine {  
     constructor(price, time, options = {}) {
         this.price = price;
