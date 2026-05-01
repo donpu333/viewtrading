@@ -101,6 +101,9 @@ async loadInitialData() {
             defaultExchange === 'binance' ? 'Binance' : 'Bybit';
         document.getElementById('contractTypeDisplay').textContent =
             defaultMarketType === 'futures' ? 'PERP' : 'SPOT';
+              if (this.timerManager) {
+            this.timerManager.start(defaultInterval);
+        }
     }
 }
 _updateHeaderFromSavedSymbol() {
@@ -349,9 +352,9 @@ async loadSymbol(symbol, exchange, marketType, externalSignal = null) {
         this.chartManager.setSymbol(symbol);
         
         // 👇 2. ОБНОВЛЯЕМ СИМВОЛ В WEBSOCKETMANAGER (для свечей)
- if (this.wsManager) {
-    this.wsManager.updateSymbolAndTimeframe(symbol, this.chartManager.currentInterval, exchange, marketType);
-}
+        if (this.wsManager) {
+            this.wsManager.updateSymbolAndTimeframe(symbol, this.chartManager.currentInterval, exchange, marketType);
+        }
         
         // Проверяем кэш
         const cacheKey = `${symbol}_${exchange}_${marketType}_${this.chartManager.currentInterval}`;
@@ -360,7 +363,6 @@ async loadSymbol(symbol, exchange, marketType, externalSignal = null) {
         if (cached && (Date.now() - cached.timestamp < 5 * 60 * 1000)) { // 5 минут
             console.log('📦 Загружаем из кэша:', cached.data.length, 'свечей');
             
-            // ✅ ПРОВЕРКА ОТМЕНЫ
             if (finalSignal.aborted) {
                 console.log('⏸️ Запрос отменён, кэш игнорируется');
                 return;
@@ -377,13 +379,18 @@ async loadSymbol(symbol, exchange, marketType, externalSignal = null) {
             document.getElementById('exchangeDisplay').textContent = exchange === 'binance' ? 'Binance' : 'Bybit';
             document.getElementById('contractTypeDisplay').textContent = marketType === 'futures' ? 'PERP' : 'SPOT';
             
-            // ✅ ИСПРАВЛЕНО: добавлен async/await
+            // ==========================================
+            // ВСТАВКА 1: Перезапуск таймера (из кэша)
+            if (this.timerManager) {
+                this.timerManager.start(this.chartManager.currentInterval);
+            }
+            // ==========================================
+            
             requestAnimationFrame(async () => {
                 if (this.chartManager && this.chartManager.chart) {
-                  
+                    // пустой блок, можно оставить как есть
                 }
                 await this.syncAllDrawings();
-                
             });
             
             this._isLoading = false;
@@ -434,11 +441,16 @@ async loadSymbol(symbol, exchange, marketType, externalSignal = null) {
             document.getElementById('exchangeDisplay').textContent = exchange === 'binance' ? 'Binance' : 'Bybit';
             document.getElementById('contractTypeDisplay').textContent = marketType === 'futures' ? 'PERP' : 'SPOT';
             
-            // ✅ ИСПРАВЛЕНО: добавлен async/await
+            // ==========================================
+            // ВСТАВКА 2: Перезапуск таймера (из сети)
+            if (this.timerManager) {
+                this.timerManager.start(this.chartManager.currentInterval);
+            }
+            // ==========================================
+            
             requestAnimationFrame(async () => {
                 this.chartManager.autoScale();
                 await this.syncAllDrawings();
-               
             });
         }
         
