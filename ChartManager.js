@@ -445,19 +445,38 @@ updatePricePrecision(symbol, exchange, marketType) {
             this._symbolChangeCallbacks.forEach(cb => cb());
         }
     }
-    
-  loadSymbolData(symbol, exchange, marketType) {
- getPrecisionFromExchange(symbol, exchange, marketType).then(precision => {
-        this.applyPriceFormat(precision);
-    });
-    
-    const isSameSymbol = (symbol === this.currentSymbol);
-const isTimeframeChange = isSameSymbol && (this.currentInterval !== this._lastTimeframe);
+ loadSymbolData(symbol, exchange, marketType) {
+    // ==========================================================
+    // 1. БЕЗОПАСНОЕ ПРИМЕНЕНИЕ ТОЧНОСТИ (ИСПРАВЛЕНИЕ ГОНКИ)
+    // ==========================================================
+    const cachedPrecision = localStorage.getItem(`precision_${symbol}_${exchange}_${marketType}`);
+    if (cachedPrecision) {
+        this.applyPriceFormat(parseInt(cachedPrecision));
+    } else if (this.chartData.length > 0) {
+        this.applyPriceFormat(this._inferPrecisionFromData());
+    }
 
-if (isTimeframeChange) {
-    this._savedTimePosition = this.saveCurrentTimePosition();
-    console.log('📍 Сохранена позиция:', this._savedTimePosition);
-}
+    getPrecisionFromExchange(symbol, exchange, marketType)
+        .then(precision => {
+            this.applyPriceFormat(precision);
+            localStorage.setItem(`precision_${symbol}_${exchange}_${marketType}`, precision);
+        })
+        .catch(err => {
+            console.warn('⚠️ Сеть: ошибка получения precision, используем fallback:', err.message);
+            if (!cachedPrecision) {
+                this.applyPriceFormat(this._inferPrecisionFromData());
+            }
+        });
+    // ==========================================================
+
+    const isSameSymbol = (symbol === this.currentSymbol);
+    const isTimeframeChange = isSameSymbol && (this.currentInterval !== this._lastTimeframe);
+
+    if (isTimeframeChange) {
+        this._savedTimePosition = this.saveCurrentTimePosition();
+        console.log('📍 Сохранена позиция:', this._savedTimePosition);
+    }
+    
     console.log(`📊 Загружаю данные для ${symbol} (${exchange} ${marketType})`);
     
     if (this._loadingSymbol) {
@@ -465,28 +484,31 @@ if (isTimeframeChange) {
         return;
     }
     this._loadingSymbol = true;
-    // Ждём готовности IndexedDB (без await)
-const dbPromise = new Promise(resolve => {
-    if (window.dbReady) {
-        resolve();
-    } else {
-        console.log('⏳ Ожидание IndexedDB...');
-        const check = setInterval(() => {
-            if (window.dbReady) {
-                clearInterval(check);
-                console.log('✅ IndexedDB готова');
-                resolve();
-            }
-        }, 50);
-        setTimeout(() => {
-            clearInterval(check);
-            console.warn('⚠️ Таймаут ожидания IndexedDB');
+    
+    // ==========================================================
+    // 2. ЖДЁМ ГОТОВНОСТИ IndexedDB
+    // ==========================================================
+    const dbPromise = new Promise(resolve => {
+        if (window.dbReady) {
             resolve();
-        }, 3000);
-    }
-});
+        } else {
+            console.log('⏳ Ожидание IndexedDB...');
+            const check = setInterval(() => {
+                if (window.dbReady) {
+                    clearInterval(check);
+                    console.log('✅ IndexedDB готова');
+                    resolve();
+                }
+            }, 50);
+            setTimeout(() => {
+                clearInterval(check);
+                console.warn('⚠️ Таймаут ожидания IndexedDB');
+                resolve(); 
+            }, 3000);
+        }
+    });
+    // ==========================================================
 
-// Дальше весь код loadSymbolData оберни в dbPromise.then(() => { ... })
     this.setSymbol(symbol);
     
     const previousData = [...(this.chartData || [])];
@@ -536,28 +558,19 @@ const dbPromise = new Promise(resolve => {
                     url = `https://api.bybit.com/v5/market/kline?category=${category}&symbol=${symbol}&interval=${bybitInterval}&limit=200`;
                 }
                 
-                console.log('URL загрузки:', url);
-                
                 const controller = new AbortController();
                 const timeoutId = setTimeout(() => controller.abort(), 10000);
                 
                 const response = await fetch(url, { signal: controller.signal });
                 clearTimeout(timeoutId);
                 
-                if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}`);
-                }
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
                 
                 const data = await response.json();
                 
                 if (exchange === 'binance') {
-                    if (!Array.isArray(data)) {
-                        throw new Error(`Binance error: ${data.msg || 'Invalid response'}`);
-                    }
-                    
-                    if (data.length === 0) {
-                        throw new Error('Binance: нет данных');
-                    }
+                    if (!Array.isArray(data)) throw new Error(`Binance error: ${data.msg || 'Invalid response'}`);
+                    if (data.length === 0) throw new Error('Binance: нет данных');
                     
                     formattedData = data.map(item => ({
                         time: Math.floor(item[0] / 1000),
@@ -567,21 +580,11 @@ const dbPromise = new Promise(resolve => {
                         close: parseFloat(item[4]),
                         volume: parseFloat(item[5])
                     }));
-                    
-                    console.log(`✅ Binance: загружено ${formattedData.length} свечей`);
-                    
                 } else {
-                    if (data.retCode !== 0) {
-                        throw new Error(`Bybit error: ${data.retMsg || 'Unknown error'} (код: ${data.retCode})`);
-                    }
+                    if (data.retCode !== 0) throw new Error(`Bybit error: ${data.retMsg || 'Unknown error'}`);
+                    if (!data.result?.list) throw new Error('Bybit: нет данных');
                     
-                    if (!data.result || !data.result.list) {
-                        throw new Error('Bybit: нет данных');
-                    }
-                    
-                    const candles = data.result.list;
-                    
-                    formattedData = candles.map(item => ({
+                    formattedData = data.result.list.map(item => ({
                         time: Math.floor(parseInt(item[0]) / 1000),
                         open: parseFloat(item[1]),
                         high: parseFloat(item[2]),
@@ -589,8 +592,6 @@ const dbPromise = new Promise(resolve => {
                         close: parseFloat(item[4]),
                         volume: parseFloat(item[5] || 0)
                     })).filter(c => c !== null);
-                     
-                    console.log(`✅ Bybit: загружено ${formattedData.length} свечей`);
                 }
                 
                 if (formattedData.length > 0) {
@@ -598,9 +599,7 @@ const dbPromise = new Promise(resolve => {
                 }
             }
             
-            if (formattedData.length === 0) {
-                throw new Error('Нет данных для отображения');
-            }
+            if (formattedData.length === 0) throw new Error('Нет данных для отображения');
             
             this.chartData = [];
             if (this.candleSeries) this.candleSeries.setData([]);
@@ -608,6 +607,15 @@ const dbPromise = new Promise(resolve => {
             
             this.setDataQuick(formattedData, this.currentInterval, symbol);
             
+            if (cachedPrecision) this.applyPriceFormat(parseInt(cachedPrecision));
+            
+            // ==========================================
+            // ВСТАВЛЕННЫЙ ВЫЗОВ ПЕРЕРИСОВКИ ТАЙМЕРА
+            if (this.timerManager) {
+                this.timerManager.forceRedrawOnDataReady();
+            }
+            // ==========================================
+
             const pairDisplay = document.getElementById('pairDisplay');
             if (pairDisplay) pairDisplay.textContent = symbol;
 
@@ -621,49 +629,33 @@ const dbPromise = new Promise(resolve => {
             this.currentExchange = exchange;
             this.currentMarketType = marketType;
 
-            // ========== ИСПРАВЛЕНИЕ: ЗАГРУЗКА ВСЕХ РИСУНКОВ ДЛЯ НОВОГО СИМВОЛА ==========
-            // Дожидаемся готовности серии (если реализован метод)
             await this.waitForReady();
 
-            if (window.rayManager) {
-                await window.rayManager.loadRays();
-            }
-            if (window.trendLineManager) {
-                await window.trendLineManager.loadTrendLines();
-            }
-            if (window.rulerLineManager) {
-                await window.rulerLineManager.loadRulers();
-            }
-            if (window.alertLineManager) {
-                await window.alertLineManager.loadAlerts();
-            }
-            if (window.textManager) {
-                await window.textManager.loadTexts();
-            }
-            // ========================================================================
+            if (window.rayManager) await window.rayManager.loadRays();
+            if (window.trendLineManager) await window.trendLineManager.loadTrendLines();
+            if (window.rulerLineManager) await window.rulerLineManager.loadRulers();
+            if (window.alertLineManager) await window.alertLineManager.loadAlerts();
+            if (window.textManager) await window.textManager.loadTexts();
 
             if (this.wsManager) {
                 this.wsManager.closeAll();
                 this.wsManager.connect(symbol, this.currentInterval);
             }
             
-            if (this.loadingOverlay) {
-                this.loadingOverlay.classList.remove('visible');
-            }
+            if (this.loadingOverlay) this.loadingOverlay.classList.remove('visible');
             
-          setTimeout(() => {
-    if (isTimeframeChange && this._savedTimePosition) {
-        this.scrollToTime(this._savedTimePosition);
-        this._savedTimePosition = null;
-        console.log('📍 Восстановлена позиция');
-    } else {
-        this.scrollToLast();
-    }
-    
-    this._lastTimeframe = this.currentInterval;
-}, 300);
-             localStorage.setItem('lastTimeframe', this.currentInterval);
-            console.log('💾 Сохранён таймфрейм:', this.currentInterval);
+            setTimeout(() => {
+                if (isTimeframeChange && this._savedTimePosition) {
+                    this.scrollToTime(this._savedTimePosition);
+                    this._savedTimePosition = null;
+                } else {
+                    this.scrollToLast();
+                }
+                this._lastTimeframe = this.currentInterval;
+            }, 300);
+            
+            localStorage.setItem('lastTimeframe', this.currentInterval);
+            
         } catch (error) {
             console.error('❌ Ошибка загрузки:', error);
             
@@ -676,14 +668,10 @@ const dbPromise = new Promise(resolve => {
                 `;
                 notification.style.display = 'block';
                 notification.style.borderLeftColor = '#f23645';
-                setTimeout(() => {
-                    notification.style.display = 'none';
-                }, 5000);
+                setTimeout(() => { notification.style.display = 'none'; }, 5000);
             }
             
-            if (this.loadingOverlay) {
-                this.loadingOverlay.classList.remove('visible');
-            }
+            if (this.loadingOverlay) this.loadingOverlay.classList.remove('visible');
             
             if (previousData && previousData.length > 0) {
                 console.log('Восстанавливаю предыдущие данные');
@@ -691,19 +679,18 @@ const dbPromise = new Promise(resolve => {
                 this._performUpdate();
                 
                 document.getElementById('pairDisplay').textContent = previousSymbol || 'BTCUSDT';
-                document.getElementById('exchangeDisplay').textContent = 
-                    previousExchange === 'binance' ? 'Binance' : 'Bybit';
-                document.getElementById('contractTypeDisplay').textContent = 
-                    previousMarketType === 'futures' ? 'PERP' : 'SPOT';
+                document.getElementById('exchangeDisplay').textContent = previousExchange === 'binance' ? 'Binance' : 'Bybit';
+                document.getElementById('contractTypeDisplay').textContent = previousMarketType === 'futures' ? 'PERP' : 'SPOT';
             }
-            
         } finally {
             this._loadingSymbol = false;
-            
         }
     };
     
-    loadData();
+    // Запускаем загрузку только после готовности БД
+    dbPromise.then(() => {
+        loadData();
+    });
 }
    async saveCandlesToCache(symbol, exchange, marketType, interval, candles) {
     if (!candles || candles.length === 0) return;
@@ -1447,10 +1434,8 @@ setDataQuick(data, interval, symbol, exchange = 'binance', marketType = 'futures
             this.indicatorManager.loadIndicators();
         }
         
-        this.loadDrawingsForCurrentSymbol();
-        setTimeout(() => {
-            this.autoScale();
-        }, 100);
+             this.loadDrawingsForCurrentSymbol();
+        this.autoScale(); // <--- Вызываем СРАЗУ, без setTimeout
         
         setTimeout(() => {
             if (window.renderDrawings) window.renderDrawings();
@@ -1806,21 +1791,54 @@ _subscribeToPrice() {
         this._subscribeToPrice();
     }
     // ДОБАВЬ ЭТОТ МЕТОД В ChartManager
-applyPriceFormat(precision) {
-    const minMove = Math.pow(10, -precision);
-    const priceFormat = { type: 'price', precision: precision, minMove: minMove };
+// Метод для вычисления точности из самих данных (Fallback)
+_inferPrecisionFromData() {
+    if (!this.chartData || this.chartData.length === 0) return 2;
+    const lastPrice = this.chartData[this.chartData.length - 1].close;
+    if (!lastPrice || lastPrice === 0) return 2;
     
-    if (this.candleSeries) {
-        this.candleSeries.applyOptions({ priceFormat: priceFormat });
+    const str = lastPrice.toString();
+    if (str.includes('.')) {
+        return str.split('.')[1].length; // Считаем знаки после запятой
     }
-    if (this.barSeries) {
-        this.barSeries.applyOptions({ priceFormat: priceFormat });
-    }
-    
-    console.log(`✅ Применён формат цены: ${precision} знаков`);
+    return 2; // Дефолт для целых чисел
 }
+
+// Обновленный метод с обработкой ошибок и принудительным обновлением
+applyPriceFormat(precision) {
+    try {
+        // 1. Если precision не пришел или ошибка - вычисляем сами из данных
+        if (precision === null || precision === undefined || isNaN(precision) || precision < 0) {
+            console.warn('⚠️ Precision не получен, вычисляем из данных графика...');
+            precision = this._inferPrecisionFromData();
+        }
+
+        const minMove = Math.pow(10, -precision);
+        const priceFormat = { type: 'price', precision: precision, minMove: minMove };
+
+        // 2. Применяем к сериям
+        if (this.candleSeries) this.candleSeries.applyOptions({ priceFormat });
+        if (this.barSeries) this.barSeries.applyOptions({ priceFormat });
+
+        // 3. ПРИНУДИТЕЛЬНО заставляем шкалу пересчитаться
+        const priceScale = this.chart.priceScale('right');
+        if (priceScale) {
+            priceScale.applyOptions({ autoScale: false }); // Выключаем
+            priceScale.applyOptions({ autoScale: true });  // Включаем - это заставит шкалу перерисоваться с новой точностью
+        }
+
+        console.log(`✅ Формат цены применен: ${precision} знаков`);
+        return precision;
+
+    } catch (error) {
+        console.error('❌ КРИТИЧЕСКАЯ ОШИБКА applyPriceFormat:', error);
+        // Экстренный fallback
+        return this._inferPrecisionFromData();
+    }
+}
+
    
 }
 if (typeof window !== 'undefined') {
     window.ChartManager = ChartManager;
-}
+}  
