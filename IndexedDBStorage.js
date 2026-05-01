@@ -29,7 +29,6 @@ class IndexedDBStorage {
                 console.log('📦 Database opened successfully');
                 this.db = event.target.result;
                 
-                // Обработчик неожиданного закрытия соединения
                 this.db.onclose = () => {
                     console.warn('📦 Database connection closed unexpectedly');
                     this.db = null;
@@ -44,14 +43,12 @@ class IndexedDBStorage {
                 const db = event.target.result;
                 const transaction = event.target.transaction;
                 
-                // Создаём хранилище symbolCaches, если его нет
                 if (!db.objectStoreNames.contains('symbolCaches')) {
                     console.log('📦 Creating symbolCaches store');
                     const symbolStore = db.createObjectStore('symbolCaches', { keyPath: 'exchange' });
                     symbolStore.createIndex('timestamp', 'timestamp');
                 }
                 
-                // Создаём хранилище drawings с индексами type, symbolKey, timestamp
                 if (!db.objectStoreNames.contains('drawings')) {
                     console.log('📦 Creating drawings store');
                     const drawingsStore = db.createObjectStore('drawings', { keyPath: 'id' });
@@ -60,7 +57,6 @@ class IndexedDBStorage {
                     drawingsStore.createIndex('timestamp', 'timestamp');
                 }
                 
-                // Создаём хранилище candles, если его нет
                 if (!db.objectStoreNames.contains('candles')) {
                     console.log('📦 Creating candles store');
                     const candlesStore = db.createObjectStore('candles', { keyPath: 'key' });
@@ -71,13 +67,12 @@ class IndexedDBStorage {
                     candlesStore.createIndex('lastUpdate', 'lastUpdate');
                 }
                 
-                // Создаём хранилище settings, если его нет
                 if (!db.objectStoreNames.contains('settings')) {
                     console.log('📦 Creating settings store');
                     db.createObjectStore('settings', { keyPath: 'key' });
                 }
                 
-                // Для существующего хранилища drawings добавляем индекс symbolKey
+                // Защита при обновлении версий для старых баз
                 if (db.objectStoreNames.contains('drawings')) {
                     const drawingsStore = transaction.objectStore('drawings');
                     if (!drawingsStore.indexNames.contains('symbolKey')) {
@@ -91,7 +86,6 @@ class IndexedDBStorage {
         return this.initPromise;
     }
 
-    // Закрытие соединения с БД
     close() {
         if (this.db) {
             this.db.close();
@@ -103,14 +97,24 @@ class IndexedDBStorage {
 
     async delete(storeName, key) {
         await this.init();
+        // ИСПРАВЛЕНИЕ: Добавлена проверка существования хранилища
+        if (!this.db.objectStoreNames.contains(storeName)) {
+            throw new Error(`Store ${storeName} not found`);
+        }
+        
         return new Promise((resolve, reject) => {
-            const transaction = this.db.transaction([storeName], 'readwrite');
-            const store = transaction.objectStore(storeName);
-            const request = store.delete(key);
-            
-            transaction.oncomplete = () => resolve();
-            transaction.onerror = () => reject(transaction.error);
-            request.onerror = () => reject(request.error);
+            try {
+                const transaction = this.db.transaction([storeName], 'readwrite');
+                const store = transaction.objectStore(storeName);
+                const request = store.delete(key);
+                
+                transaction.oncomplete = () => resolve();
+                transaction.onerror = () => reject(transaction.error);
+                request.onerror = () => reject(request.error);
+            } catch (error) {
+                console.error(`📦 Error in delete (${storeName}):`, error);
+                reject(error);
+            }
         });
     }
 
@@ -210,69 +214,79 @@ class IndexedDBStorage {
         });
     }
 
-    // Очистка хранилища
     async clear(storeName) {
         await this.init();
-        
+        // ИСПРАВЛЕНИЕ: Добавлена проверка существования хранилища
         if (!this.db.objectStoreNames.contains(storeName)) {
             throw new Error(`Store ${storeName} not found`);
         }
         
         return new Promise((resolve, reject) => {
-            const transaction = this.db.transaction([storeName], 'readwrite');
-            const store = transaction.objectStore(storeName);
-            const request = store.clear();
-            
-            transaction.oncomplete = () => resolve();
-            transaction.onerror = () => reject(transaction.error);
-            request.onerror = () => reject(request.error);
+            try {
+                const transaction = this.db.transaction([storeName], 'readwrite');
+                const store = transaction.objectStore(storeName);
+                const request = store.clear();
+                
+                transaction.oncomplete = () => resolve();
+                transaction.onerror = () => reject(transaction.error);
+                request.onerror = () => reject(request.error);
+            } catch (error) {
+                console.error(`📦 Error in clear (${storeName}):`, error);
+                reject(error);
+            }
         });
     }
 
-    // Подсчёт записей в хранилище
     async count(storeName) {
         await this.init();
-        
+        // ИСПРАВЛЕНИЕ: Добавлена проверка существования хранилища
         if (!this.db.objectStoreNames.contains(storeName)) {
             throw new Error(`Store ${storeName} not found`);
         }
         
         return new Promise((resolve, reject) => {
-            const transaction = this.db.transaction([storeName], 'readonly');
-            const store = transaction.objectStore(storeName);
-            const request = store.count();
-            
-            request.onsuccess = () => resolve(request.result);
-            request.onerror = () => reject(request.error);
+            try {
+                const transaction = this.db.transaction([storeName], 'readonly');
+                const store = transaction.objectStore(storeName);
+                const request = store.count();
+                
+                request.onsuccess = () => resolve(request.result);
+                request.onerror = () => reject(request.error);
+            } catch (error) {
+                console.error(`📦 Error in count (${storeName}):`, error);
+                reject(error);
+            }
         });
     }
 
-    // Массовая вставка
     async putMany(storeName, items) {
         await this.init();
-        
+        // ИСПРАВЛЕНИЕ: Добавлена проверка существования хранилища
         if (!this.db.objectStoreNames.contains(storeName)) {
             throw new Error(`Store ${storeName} not found`);
         }
+
+        if (!items || items.length === 0) return [];
         
         return new Promise((resolve, reject) => {
-            const transaction = this.db.transaction([storeName], 'readwrite');
-            const store = transaction.objectStore(storeName);
-            
-            let completed = 0;
-            const results = [];
-            
-            transaction.oncomplete = () => resolve(results);
-            transaction.onerror = () => reject(transaction.error);
-            
-            items.forEach(item => {
-                const request = store.put(item);
-                request.onsuccess = () => {
-                    results.push(request.result);
-                    completed++;
-                };
-                request.onerror = () => reject(request.error);
-            });
+            try {
+                const transaction = this.db.transaction([storeName], 'readwrite');
+                const store = transaction.objectStore(storeName);
+                
+                const results = [];
+                
+                transaction.oncomplete = () => resolve(results);
+                transaction.onerror = () => reject(transaction.error);
+                
+                items.forEach(item => {
+                    const request = store.put(item);
+                    request.onsuccess = () => results.push(request.result);
+                    request.onerror = () => reject(request.error);
+                });
+            } catch (error) {
+                console.error(`📦 Error in putMany (${storeName}):`, error);
+                reject(error);
+            }
         });
     }
 }
@@ -281,25 +295,35 @@ class IndexedDBStorage {
 window.db = new IndexedDBStorage('TradingViewPro', 3);
 window.dbReady = false;
 
-// Инициализация с проверкой
+// Инициализация с безопасным fallback
 window.db.init().then(() => {
     window.dbReady = true;
     console.log('✅ IndexedDB ready to use');
 }).catch(err => {
-    window.dbReady = false;
+    window.dbReady = false; // ВАЖНО: оставляем false!
     console.error('❌ IndexedDB init failed:', err);
-    // Создаем запасной вариант (заглушка)
-    window.db = {
-        get: () => Promise.resolve(null),
-        put: () => Promise.resolve(),
-        delete: () => Promise.resolve(),
-        getAll: () => Promise.resolve([]),
-        getByIndex: () => Promise.resolve([]),
-        clear: () => Promise.resolve(),
-        count: () => Promise.resolve(0),
-        putMany: () => Promise.resolve([])
-    };
-    window.dbReady = true;
+    
+    // ИСПРАВЛЕНИЕ: Умная заглушка через Proxy
+    // Она не даст приложению упасть, но будет кричать в консоль, если что-то пойдёт не так
+    window.db = new Proxy({}, {
+        get: (target, prop) => {
+            if (['get', 'put', 'delete', 'getAll', 'getByIndex', 'clear', 'count', 'putMany', 'init'].includes(prop)) {
+                return (...args) => {
+                    console.warn(`📦 IndexedDB DISABLED. Call to db.${prop}(${args[0]}) was ignored.`);
+                    // Возвращаем безопасные дефолтные значения, чтобы не сломать логику upstream
+                    if (prop === 'getAll' || prop === 'getByIndex') return Promise.resolve([]);
+                    if (prop === 'count') return Promise.resolve(0);
+                    return Promise.resolve(null);
+                };
+            }
+            return undefined;
+        }
+    });
+    
+    // Оповещаем пользователя (можно заменить на красивый UI Alert)
+    setTimeout(() => {
+        alert('Ваш браузер заблокировал доступ к локальной базе данных.\nСохранение рисунков и кэш свечей будут недоступны во этой сессии.\nРазрешите использование Cookies/Storage в настройках браузера.');
+    }, 1000);
 });
 
 if (typeof window !== 'undefined') {
