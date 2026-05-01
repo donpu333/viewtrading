@@ -6,13 +6,13 @@ class TimerRenderer {
         this.enabled = true;
     }
 
-    draw(target) {
+        draw(target) {
         if (!this.enabled) return;
         
         target.useBitmapCoordinateSpace(scope => {
             const ctx = scope.context;
             const chartManager = this._timerManager._chartManager;
-            if (!chartManager) return;
+            if (!chartManager || !chartManager.chartData || chartManager.chartData.length === 0) return; // 👈 НЕТ ДАННЫХ - ВЫХОДИМ
             
             const timerText = this._timerManager._timerElement?.textContent || '';
             if (!timerText) return;
@@ -25,41 +25,33 @@ class TimerRenderer {
             const rectHeight = (fontSize + 8) * scope.verticalPixelRatio;
             const rectX = scope.mediaSize.width - rectWidth - 5 * scope.horizontalPixelRatio;
             
+            // 1. Пытаемся получить актуальную цену
             let price = chartManager.currentRealPrice;
             if (!price || isNaN(price) || price <= 0) {
                 const lastCandle = chartManager.getLastCandle();
-                price = lastCandle ? lastCandle.close : 0;
+                price = lastCandle ? lastCandle.close : null;
             }
-            
+
+            // 2. Если цены всё ещё нет - прерываем отрисовку (избегаем rectY = 50)
+            if (!price) return;
+
             const activeSeries = chartManager.currentChartType === 'candle' 
                 ? chartManager.candleSeries 
                 : chartManager.barSeries;
             
-          let yCoord = activeSeries.priceToCoordinate(price);
+            if (!activeSeries) return;
 
-// СТАЛО (правильно):
-if (yCoord === null) {
-    // priceScale больше не имеет метода priceToCoordinate
-    // Просто используем цену последней свечи
-    const lastCandle = chartManager.getLastCandle();
-    if (lastCandle) {
-        yCoord = activeSeries.priceToCoordinate(lastCandle.close);
-    }
-}
+            // 3. Получаем координату Y
+            let yCoord = activeSeries.priceToCoordinate(price);
 
-let rectY;
-if (yCoord !== null && yCoord > 0) {
-    rectY = yCoord - rectHeight / 2;
-} else {
-    // Если совсем не получилось — прижимаем к последней свече
-    const lastCandle = chartManager.getLastCandle();
-    if (lastCandle) {
-        yCoord = activeSeries.priceToCoordinate(lastCandle.close);
-        rectY = yCoord !== null ? yCoord - rectHeight / 2 : 50;
-    } else {
-        rectY = 50;
-    }
-}
+            // 4. КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Если серия пуста или шкала не успела перестроиться,
+            // priceToCoordinate вернёт null. Мы просто НЕ рисуем таймер на этом кадре.
+            if (yCoord === null || isNaN(yCoord)) {
+                return; 
+            }
+            
+            // 5. Вычисляем позицию прямоугольника (теперь мы уверены, что yCoord валиден)
+            let rectY = yCoord - rectHeight / 2;
             
             const lastCandle = chartManager.getLastCandle();
             const isBullish = lastCandle ? lastCandle.close >= lastCandle.open : true;
@@ -295,7 +287,17 @@ class TimerManager {
             } catch (e) {}
         }
     }
-    
+        // Вызывается из ChartManager после успешной загрузки данных нового тикера
+      forceRedrawOnDataReady() {
+        if (this._disabled || !this._primitive) return;
+        
+        // Ждём ровно один кадр отрисовки браузера, чтобы LWC 100% пересчитал координаты
+        requestAnimationFrame(() => {
+            if (this._primitive && this._primitive.isEnabled()) {
+                this._primitive.requestRedraw();
+            }
+        });
+    }
     destroy() {
         this.stop();
         if (this._primitive) {
