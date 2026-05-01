@@ -1783,8 +1783,11 @@ class TempTrendLinePrimitive {
 }
 
 // ========== МЕНЕДЖЕР ТРЕНДОВЫХ ЛИНИЙ (ИСПРАВЛЕН) ==========
+// ========== ПОЛНЫЙ TrendLineManager (ВСЁ РАБОТАЕТ КАК ЛУЧ) ==========
 class TrendLineManager {
     constructor(chartManager) {
+        this._isMac = /Mac/.test(navigator.userAgent);
+        this._pixelRatio = window.devicePixelRatio || 1;
         this._trendLines = [];
         this._chartManager = chartManager;
         this._selectedLine = null;
@@ -1829,15 +1832,19 @@ class TrendLineManager {
         container.addEventListener('dblclick', this._handleDblClick);
         container.addEventListener('mousemove', (e) => {
             const rect = container.getBoundingClientRect();
-            this._lastMouseX = e.clientX - rect.left;
-            this._lastMouseY = e.clientY - rect.top;
+            let mx = e.clientX - rect.left;
+            let my = e.clientY - rect.top;
+            if (this._isMac && this._pixelRatio > 1) {
+                mx *= this._pixelRatio;
+                my *= this._pixelRatio;
+            }
+            this._lastMouseX = mx;
+            this._lastMouseY = my;
         });
     }
 
-    _setupHotkeys() {
-        document.addEventListener('keydown', this._handleKeyDown);
-    }
-    
+    _setupHotkeys() { document.addEventListener('keydown', this._handleKeyDown); }
+
     _getCurrentSymbolKey() {
         const symbol = this._chartManager.currentSymbol || 'BTCUSDT';
         const exchange = this._chartManager.currentExchange || 'binance';
@@ -1847,17 +1854,10 @@ class TrendLineManager {
 
     setDrawingMode(enabled) {
         this._isDrawingMode = enabled;
-        const trendBtn = document.getElementById('toolTrendLine');
-        if (trendBtn) {
-            if (enabled) {
-                trendBtn.style.background = '#4A90E2';
-                trendBtn.style.color = '#FFFFFF';
-                trendBtn.classList.add('active');
-            } else {
-                trendBtn.style.background = '';
-                trendBtn.style.color = '';
-                trendBtn.classList.remove('active');
-            }
+        const btn = document.getElementById('toolTrendLine');
+        if (btn) {
+            if (enabled) { btn.style.background = '#4A90E2'; btn.style.color = '#FFFFFF'; btn.classList.add('active'); }
+            else { btn.style.background = ''; btn.style.color = ''; btn.classList.remove('active'); }
         }
         if (!enabled) {
             if (this._tempPrimitive) {
@@ -1874,11 +1874,8 @@ class TrendLineManager {
 
     setMagnetEnabled(enabled) {
         this._magnetEnabled = enabled;
-        const magnetBtn = document.getElementById('toolMagnet');
-        if (magnetBtn) {
-            if (enabled) magnetBtn.classList.add('magnet-active');
-            else magnetBtn.classList.remove('magnet-active');
-        }
+        const btn = document.getElementById('toolMagnet');
+        if (btn) { if (enabled) btn.classList.add('magnet-active'); else btn.classList.remove('magnet-active'); }
     }
 
     _getTimeFromCoordinate(x) {
@@ -1888,35 +1885,23 @@ class TrendLineManager {
         if (!data.length) return null;
         let intervalMs = 60 * 60 * 1000;
         if (data.length >= 2) intervalMs = data[1].time - data[0].time;
-        const firstCandle = data[0];
-        const lastCandle = data[data.length - 1];
+        const firstCandle = data[0], lastCandle = data[data.length - 1];
         const firstX = this._chartManager.timeToCoordinate(firstCandle.time);
         const lastX = this._chartManager.timeToCoordinate(lastCandle.time);
         if (firstX === null || lastX === null) return null;
-        if (x > lastX) {
-            const deltaX = x - lastX;
-            const pixelsPerMs = (lastX - firstX) / (lastCandle.time - firstCandle.time);
-            return lastCandle.time + deltaX / pixelsPerMs;
-        }
-        if (x < firstX) {
-            const deltaX = firstX - x;
-            const pixelsPerMs = (lastX - firstX) / (lastCandle.time - firstCandle.time);
-            return firstCandle.time - deltaX / pixelsPerMs;
-        }
+        if (x > lastX) { return lastCandle.time + (x - lastX) / ((lastX - firstX) / (lastCandle.time - firstCandle.time)); }
+        if (x < firstX) { return firstCandle.time - (firstX - x) / ((lastX - firstX) / (lastCandle.time - firstCandle.time)); }
         return null;
     }
 
     createTrendLine(point1, point2, options = {}) {
         const defaultVisibility = { '1m': true, '3m': true, '5m': true, '15m': true, '30m': true, '1h': true, '4h': true, '6h': true, '12h': true, '1d': true, '1w': true, '1M': true };
-        const timeframeVisibility = options.timeframeVisibility || defaultVisibility;
-        const trendLine = new TrendLine(point1, point2, { ...options, timeframeVisibility });
-        trendLine.anchorTime1 = point1.time;
-        trendLine.anchorTime2 = point2.time;
+        const trendLine = new TrendLine(point1, point2, { ...options, timeframeVisibility: options.timeframeVisibility || defaultVisibility });
+        trendLine.anchorTime1 = point1.time; trendLine.anchorTime2 = point2.time;
         trendLine.symbolKey = this._getCurrentSymbolKey();
         trendLine.symbol = this._chartManager.currentSymbol;
         trendLine.exchange = this._chartManager.currentExchange;
         trendLine.marketType = this._chartManager.currentMarketType;
-        
         const primitive = new TrendLinePrimitive(trendLine, this._chartManager);
         const series = this._chartManager.currentChartType === 'candle' ? this._chartManager.candleSeries : this._chartManager.barSeries;
         series.attachPrimitive(primitive);
@@ -1932,48 +1917,45 @@ class TrendLineManager {
             window.db.delete('drawings', lineId).catch(e => console.warn(e));
             try { series.detachPrimitive(primitive); } catch (e) {}
             this._trendLines.splice(index, 1);
-            if (this._selectedLine && this._selectedLine.id === lineId) this._selectedLine = null;
-            if (this._dragLine && this._dragLine.id === lineId) this._dragLine = null;
-            this._saveTrendLines();
-            this._requestRedraw();
+            if (this._selectedLine?.id === lineId) this._selectedLine = null;
+            if (this._dragLine?.id === lineId) this._dragLine = null;
+            this._saveTrendLines(); this._requestRedraw();
             return true;
         }
         return false;
     }
 
     deleteAllTrendLines() {
-        for (const item of this._trendLines) {
-            window.db.delete('drawings', item.trendLine.id).catch(e => console.warn(e));
-        }
+        for (const item of this._trendLines) window.db.delete('drawings', item.trendLine.id).catch(e => console.warn(e));
         this._trendLines.forEach(({ primitive, series }) => { try { series.detachPrimitive(primitive); } catch(e) {} });
-        this._trendLines = [];
-        this._selectedLine = null;
-        this._dragLine = null;
-        this._saveTrendLines();
-        this._requestRedraw();
+        this._trendLines = []; this._selectedLine = null; this._dragLine = null;
+        this._saveTrendLines(); this._requestRedraw();
     }
 
     _handleMouseDown(e) {
         if (e.button !== 0) return;
         const rect = this._chartManager.chartContainer.getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const y = e.clientY - rect.top;
+        let x = e.clientX - rect.left;
+        let y = e.clientY - rect.top;
+        if (this._isMac && this._pixelRatio > 1) { x *= this._pixelRatio; y *= this._pixelRatio; }
+
         const trendMenu = document.getElementById('trendContextMenu');
-        if (trendMenu && trendMenu.style.display === 'flex') {
-            const menuRect = trendMenu.getBoundingClientRect();
-            const isClickInsideMenu = e.clientX >= menuRect.left && e.clientX <= menuRect.right && e.clientY >= menuRect.top && e.clientY <= menuRect.bottom;
-            if (isClickInsideMenu) return;
+        if (trendMenu?.style.display === 'flex') {
+            const mr = trendMenu.getBoundingClientRect();
+            if (e.clientX >= mr.left && e.clientX <= mr.right && e.clientY >= mr.top && e.clientY <= mr.bottom) return;
         }
+
         if (this._isDrawingMode && this._isDrawingSecondPoint && this._drawingStartPoint) {
-            this._completeDrawing(x, y);
-            e.preventDefault();
-            e.stopPropagation();
+            let cx = x, cy = y;
+            if (this._isMac && this._pixelRatio > 1) { cx /= this._pixelRatio; cy /= this._pixelRatio; }
+            this._completeDrawing(cx, cy);
+            e.preventDefault(); e.stopPropagation();
             return;
         }
+
         const hit = this.hitTest(x, y);
-        if (hit && hit.trendLine) {
-            e.preventDefault();
-            e.stopPropagation();
+        if (hit?.trendLine) {
+            e.preventDefault(); e.stopPropagation();
             if (this._selectedLine && this._selectedLine !== hit.trendLine) {
                 this._selectedLine.selected = false;
                 this._selectedLine.showDragPoint1 = false;
@@ -1981,23 +1963,22 @@ class TrendLineManager {
             }
             hit.trendLine.selected = true;
             this._selectedLine = hit.trendLine;
-
-            const point1X = this._chartManager.timeToCoordinateWithFallback?.(hit.trendLine.point1.time) ?? this._chartManager.timeToCoordinate(hit.trendLine.point1.time);
-            const point1Y = this._chartManager.priceToCoordinateWithFallback?.(hit.trendLine.point1.price) ?? this._chartManager.priceToCoordinate(hit.trendLine.point1.price);
-            const point2X = this._chartManager.timeToCoordinateWithFallback?.(hit.trendLine.point2.time) ?? this._chartManager.timeToCoordinate(hit.trendLine.point2.time);
-            const point2Y = this._chartManager.priceToCoordinateWithFallback?.(hit.trendLine.point2.price) ?? this._chartManager.priceToCoordinate(hit.trendLine.point2.price);
-
-            if (point1X !== null && point1Y !== null) { hit.trendLine.dragPointX1 = point1X; hit.trendLine.dragPointY1 = point1Y; }
-            if (point2X !== null && point2Y !== null) { hit.trendLine.dragPointX2 = point2X; hit.trendLine.dragPointY2 = point2Y; }
+            const p1x = this._chartManager.timeToCoordinateWithFallback?.(hit.trendLine.point1.time) ?? this._chartManager.timeToCoordinate(hit.trendLine.point1.time);
+            const p1y = this._chartManager.priceToCoordinateWithFallback?.(hit.trendLine.point1.price) ?? this._chartManager.priceToCoordinate(hit.trendLine.point1.price);
+            const p2x = this._chartManager.timeToCoordinateWithFallback?.(hit.trendLine.point2.time) ?? this._chartManager.timeToCoordinate(hit.trendLine.point2.time);
+            const p2y = this._chartManager.priceToCoordinateWithFallback?.(hit.trendLine.point2.price) ?? this._chartManager.priceToCoordinate(hit.trendLine.point2.price);
+            if (p1x !== null && p1y !== null) { hit.trendLine.dragPointX1 = p1x; hit.trendLine.dragPointY1 = p1y; }
+            if (p2x !== null && p2y !== null) { hit.trendLine.dragPointX2 = p2x; hit.trendLine.dragPointY2 = p2y; }
             hit.trendLine.showDragPoint1 = hit.type === 'point1';
             hit.trendLine.showDragPoint2 = hit.type === 'point2';
             this._potentialDrag = { line: hit.trendLine, pointType: hit.type, startX: x, startY: y, startPoint1: { ...hit.trendLine.point1 }, startPoint2: { ...hit.trendLine.point2 } };
             this._requestRedraw();
         } else {
             if (this._isDrawingMode && !this._isDrawingSecondPoint) {
-                this._startDrawing(x, y);
-                e.preventDefault();
-                e.stopPropagation();
+                let cx = x, cy = y;
+                if (this._isMac && this._pixelRatio > 1) { cx /= this._pixelRatio; cy /= this._pixelRatio; }
+                this._startDrawing(cx, cy);
+                e.preventDefault(); e.stopPropagation();
                 return;
             }
             if (this._selectedLine) {
@@ -2013,88 +1994,63 @@ class TrendLineManager {
 
     _handleMouseMove(e) {
         const rect = this._chartManager.chartContainer.getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const y = e.clientY - rect.top;
-        this._lastMouseX = x;
-        this._lastMouseY = y;
-        
-      if (this._isDrawingMode && this._isDrawingSecondPoint && this._drawingStartPoint) {
-    let price = this._chartManager.coordinateToPrice(y);
-    let time = this._getTimeFromCoordinate(x);
-    if (price !== null && time !== null) {
-        // БЕЗ МАГНИТА – используем точные координаты мыши
-        if (this._tempLine) {
-            this._tempLine.point2 = { price, time };
-        } else {
-            this._tempLine = { 
-                point1: this._drawingStartPoint, 
-                point2: { price, time }, 
-                options: { 
-                    color: document.getElementById('currentColorBox')?.style.backgroundColor || '#4A90E2', 
-                    lineWidth: parseInt(document.getElementById('settingThickness')?.value) || 2, 
-                    lineStyle: document.getElementById('templateSelect')?.value || 'solid' 
-                } 
-            };
-            const series = this._chartManager.currentChartType === 'candle' ? this._chartManager.candleSeries : this._chartManager.barSeries;
-            if (series && !this._tempPrimitive) { 
-                this._tempPrimitive = new TempTrendLinePrimitive(this); 
-                try { series.attachPrimitive(this._tempPrimitive); } catch(e) {} 
+        let x = e.clientX - rect.left;
+        let y = e.clientY - rect.top;
+        if (this._isMac && this._pixelRatio > 1) { x *= this._pixelRatio; y *= this._pixelRatio; }
+        this._lastMouseX = x; this._lastMouseY = y;
+
+        if (this._isDrawingMode && this._isDrawingSecondPoint && this._drawingStartPoint) {
+            let cx = x, cy = y;
+            if (this._isMac && this._pixelRatio > 1) { cx /= this._pixelRatio; cy /= this._pixelRatio; }
+            let price = this._chartManager.coordinateToPrice(cy);
+            let time = this._getTimeFromCoordinate(cx);
+            if (price !== null && time !== null) {
+                if (this._tempLine) {
+                    this._tempLine.point2 = { price, time };
+                } else {
+                    this._tempLine = { point1: this._drawingStartPoint, point2: { price, time }, options: { color: document.getElementById('currentColorBox')?.style.backgroundColor || '#4A90E2', lineWidth: parseInt(document.getElementById('settingThickness')?.value) || 2, lineStyle: document.getElementById('templateSelect')?.value || 'solid' } };
+                    const series = this._chartManager.currentChartType === 'candle' ? this._chartManager.candleSeries : this._chartManager.barSeries;
+                    if (series && !this._tempPrimitive) { this._tempPrimitive = new TempTrendLinePrimitive(this); try { series.attachPrimitive(this._tempPrimitive); } catch(e) {} }
+                }
+                this._requestRedraw();
             }
+            return;
         }
-        this._requestRedraw();
-    }
-    return;
-}
-        
 
         if (this._potentialDrag && !this._isDragging) {
-            const dx = Math.abs(x - this._potentialDrag.startX);
-            const dy = Math.abs(y - this._potentialDrag.startY);
+            const dx = Math.abs(x - this._potentialDrag.startX), dy = Math.abs(y - this._potentialDrag.startY);
             if (dx > 3 || dy > 3) {
-                this._isDragging = true;
-                this._dragLine = this._potentialDrag.line;
-                this._dragPoint = this._potentialDrag.pointType;
+                this._isDragging = true; this._dragLine = this._potentialDrag.line; this._dragPoint = this._potentialDrag.pointType;
                 this._dragLine.dragging = true;
-
                 const p1x = this._chartManager.timeToCoordinateWithFallback?.(this._dragLine.point1.time) ?? this._chartManager.timeToCoordinate(this._dragLine.point1.time);
                 const p1y = this._chartManager.priceToCoordinateWithFallback?.(this._dragLine.point1.price) ?? this._chartManager.priceToCoordinate(this._dragLine.point1.price);
                 const p2x = this._chartManager.timeToCoordinateWithFallback?.(this._dragLine.point2.time) ?? this._chartManager.timeToCoordinate(this._dragLine.point2.time);
                 const p2y = this._chartManager.priceToCoordinateWithFallback?.(this._dragLine.point2.price) ?? this._chartManager.priceToCoordinate(this._dragLine.point2.price);
-
                 if (p1x !== null && p1y !== null) this._dragLine._pixelStart1 = { x: p1x, y: p1y };
                 if (p2x !== null && p2y !== null) this._dragLine._pixelStart2 = { x: p2x, y: p2y };
-                this._dragStartX = this._potentialDrag.startX;
-                this._dragStartY = this._potentialDrag.startY;
+                this._dragStartX = this._potentialDrag.startX; this._dragStartY = this._potentialDrag.startY;
                 this._dragStartPoint1 = { ...this._potentialDrag.startPoint1 };
                 this._dragStartPoint2 = { ...this._potentialDrag.startPoint2 };
                 this._chartManager.chartContainer.style.cursor = 'grabbing';
             }
         }
         if (this._isDragging && this._dragLine) {
-            e.preventDefault();
-            e.stopPropagation();
-            const deltaX = x - this._dragStartX;
-            const deltaY = y - this._dragStartY;
-            if (this._dragPoint === 'point1') {
-                if (this._dragLine._pixelStart1) {
-                    this._dragLine._tempPixel1 = { x: this._dragLine._pixelStart1.x + deltaX, y: this._dragLine._pixelStart1.y + deltaY };
-                    delete this._dragLine._tempPixel2;
-                }
-            } else if (this._dragPoint === 'point2') {
-                if (this._dragLine._pixelStart2) {
-                    this._dragLine._tempPixel2 = { x: this._dragLine._pixelStart2.x + deltaX, y: this._dragLine._pixelStart2.y + deltaY };
-                    delete this._dragLine._tempPixel1;
-                }
-            } else if (this._dragPoint === 'line') {
-                if (this._dragLine._pixelStart1 && this._dragLine._pixelStart2) {
-                    this._dragLine._tempPixel1 = { x: this._dragLine._pixelStart1.x + deltaX, y: this._dragLine._pixelStart1.y + deltaY };
-                    this._dragLine._tempPixel2 = { x: this._dragLine._pixelStart2.x + deltaX, y: this._dragLine._pixelStart2.y + deltaY };
-                }
+            e.preventDefault(); e.stopPropagation();
+            const deltaX = x - this._dragStartX, deltaY = y - this._dragStartY;
+            if (this._dragPoint === 'point1' && this._dragLine._pixelStart1) {
+                this._dragLine._tempPixel1 = { x: this._dragLine._pixelStart1.x + deltaX, y: this._dragLine._pixelStart1.y + deltaY };
+                delete this._dragLine._tempPixel2;
+            } else if (this._dragPoint === 'point2' && this._dragLine._pixelStart2) {
+                this._dragLine._tempPixel2 = { x: this._dragLine._pixelStart2.x + deltaX, y: this._dragLine._pixelStart2.y + deltaY };
+                delete this._dragLine._tempPixel1;
+            } else if (this._dragPoint === 'line' && this._dragLine._pixelStart1 && this._dragLine._pixelStart2) {
+                this._dragLine._tempPixel1 = { x: this._dragLine._pixelStart1.x + deltaX, y: this._dragLine._pixelStart1.y + deltaY };
+                this._dragLine._tempPixel2 = { x: this._dragLine._pixelStart2.x + deltaX, y: this._dragLine._pixelStart2.y + deltaY };
             }
             this._requestRedraw();
         } else {
             const hit = this.hitTest(x, y);
-            const hitLine = hit ? hit.trendLine : null;
+            const hitLine = hit?.trendLine ?? null;
             this._chartManager.chartContainer.style.cursor = hitLine ? (hit.type === 'point1' || hit.type === 'point2' ? 'move' : 'grab') : 'crosshair';
             if (this._hoveredLine !== hitLine) {
                 if (this._hoveredLine) this._hoveredLine.hovered = false;
@@ -2107,78 +2063,48 @@ class TrendLineManager {
 
     _handleMouseUp(e) {
         if (this._isDragging) {
-            e.preventDefault();
-            e.stopPropagation();
+            e.preventDefault(); e.stopPropagation();
             this._isDragging = false;
             if (this._dragLine) {
                 if (this._dragPoint === 'point1' && this._dragLine._tempPixel1) {
                     const price = this._chartManager.coordinateToPrice(this._dragLine._tempPixel1.y);
                     const time = this._getTimeFromCoordinate(this._dragLine._tempPixel1.x);
                     if (price !== null && time !== null) {
-                        let newPrice = price, newTime = time;
-                        if (this._magnetEnabled) {
-                            const snapped = this._snapToPrice(price, time);
-                            newPrice = snapped.price;
-                            newTime = snapped.time;
-                            this._dragLine.anchorCandle1 = snapped.anchorCandle;
-                        }
-                        this._dragLine.point1.price = newPrice;
-                        this._dragLine.point1.time = newTime;
+                        if (this._magnetEnabled) { const s = this._snapToPrice(price, time); this._dragLine.point1.price = s.price; this._dragLine.point1.time = s.time; this._dragLine.anchorCandle1 = s.anchorCandle; }
+                        else { this._dragLine.point1.price = price; this._dragLine.point1.time = time; }
                     }
                     delete this._dragLine._tempPixel1;
-                }
-                else if (this._dragPoint === 'point2' && this._dragLine._tempPixel2) {
+                } else if (this._dragPoint === 'point2' && this._dragLine._tempPixel2) {
                     const price = this._chartManager.coordinateToPrice(this._dragLine._tempPixel2.y);
                     const time = this._getTimeFromCoordinate(this._dragLine._tempPixel2.x);
                     if (price !== null && time !== null) {
-                        let newPrice = price, newTime = time;
-                        if (this._magnetEnabled) {
-                            const snapped = this._snapToPrice(price, time);
-                            newPrice = snapped.price;
-                            newTime = snapped.time;
-                            this._dragLine.anchorCandle2 = snapped.anchorCandle;
-                        }
-                        this._dragLine.point2.price = newPrice;
-                        this._dragLine.point2.time = newTime;
+                        if (this._magnetEnabled) { const s = this._snapToPrice(price, time); this._dragLine.point2.price = s.price; this._dragLine.point2.time = s.time; this._dragLine.anchorCandle2 = s.anchorCandle; }
+                        else { this._dragLine.point2.price = price; this._dragLine.point2.time = time; }
                     }
                     delete this._dragLine._tempPixel2;
-                }
-                else if (this._dragPoint === 'line' && this._dragLine._tempPixel1 && this._dragLine._tempPixel2) {
+                } else if (this._dragPoint === 'line' && this._dragLine._tempPixel1 && this._dragLine._tempPixel2) {
                     const price1 = this._chartManager.coordinateToPrice(this._dragLine._tempPixel1.y);
                     const time1 = this._getTimeFromCoordinate(this._dragLine._tempPixel1.x);
                     const price2 = this._chartManager.coordinateToPrice(this._dragLine._tempPixel2.y);
                     const time2 = this._getTimeFromCoordinate(this._dragLine._tempPixel2.x);
                     if (price1 !== null && time1 !== null && price2 !== null && time2 !== null) {
-                        let newPrice1 = price1, newTime1 = time1;
-                        let newPrice2 = price2, newTime2 = time2;
                         if (this._magnetEnabled) {
-                            const snapped1 = this._snapToPrice(price1, time1);
-                            const snapped2 = this._snapToPrice(price2, time2);
-                            newPrice1 = snapped1.price; newTime1 = snapped1.time;
-                            newPrice2 = snapped2.price; newTime2 = snapped2.time;
-                            this._dragLine.anchorCandle1 = snapped1.anchorCandle;
-                            this._dragLine.anchorCandle2 = snapped2.anchorCandle;
+                            const s1 = this._snapToPrice(price1, time1), s2 = this._snapToPrice(price2, time2);
+                            this._dragLine.point1.price = s1.price; this._dragLine.point1.time = s1.time; this._dragLine.anchorCandle1 = s1.anchorCandle;
+                            this._dragLine.point2.price = s2.price; this._dragLine.point2.time = s2.time; this._dragLine.anchorCandle2 = s2.anchorCandle;
+                        } else {
+                            this._dragLine.point1.price = price1; this._dragLine.point1.time = time1;
+                            this._dragLine.point2.price = price2; this._dragLine.point2.time = time2;
                         }
-                        this._dragLine.point1.price = newPrice1;
-                        this._dragLine.point1.time = newTime1;
-                        this._dragLine.point2.price = newPrice2;
-                        this._dragLine.point2.time = newTime2;
                     }
-                    delete this._dragLine._tempPixel1;
-                    delete this._dragLine._tempPixel2;
+                    delete this._dragLine._tempPixel1; delete this._dragLine._tempPixel2;
                 }
-                delete this._dragLine._pixelStart1;
-                delete this._dragLine._pixelStart2;
+                delete this._dragLine._pixelStart1; delete this._dragLine._pixelStart2;
                 this._dragLine.dragging = false;
                 this._dragLine.anchorTime1 = this._dragLine.point1.time;
                 this._dragLine.anchorTime2 = this._dragLine.point2.time;
-                if (this._selectedLine !== this._dragLine) {
-                    this._dragLine.showDragPoint1 = false;
-                    this._dragLine.showDragPoint2 = false;
-                }
-                this._saveTrendLines();
-                this._dragLine = null;
-                this._requestRedraw();
+                if (this._selectedLine !== this._dragLine) { this._dragLine.showDragPoint1 = false; this._dragLine.showDragPoint2 = false; }
+                this._saveTrendLines(); this._dragLine = null; this._requestRedraw();
             }
             this._chartManager.chartContainer.style.cursor = 'crosshair';
         }
@@ -2190,93 +2116,51 @@ class TrendLineManager {
         this._chartManager.chartContainer.style.cursor = 'crosshair';
     }
 
-   _handleContextMenu(e) {
-    e.preventDefault();
-    e.stopPropagation();
-    const rect = this._chartManager.chartContainer.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    const hit = this.hitTest(x, y);
-    if (hit && hit.trendLine) {
-        if (this._selectedLine && this._selectedLine !== hit.trendLine) {
-            this._selectedLine.selected = false;
-            this._selectedLine.showDragPoint1 = false;
-            this._selectedLine.showDragPoint2 = false;
-        }
-        hit.trendLine.selected = true;
-        hit.trendLine.showDragPoint1 = true;
-        hit.trendLine.showDragPoint2 = true;
-        this._selectedLine = hit.trendLine;
-
-        const point1X = this._chartManager.timeToCoordinateWithFallback?.(hit.trendLine.point1.time) ?? this._chartManager.timeToCoordinate(hit.trendLine.point1.time);
-        const point1Y = this._chartManager.priceToCoordinateWithFallback?.(hit.trendLine.point1.price) ?? this._chartManager.priceToCoordinate(hit.trendLine.point1.price);
-        const point2X = this._chartManager.timeToCoordinateWithFallback?.(hit.trendLine.point2.time) ?? this._chartManager.timeToCoordinate(hit.trendLine.point2.time);
-        const point2Y = this._chartManager.priceToCoordinateWithFallback?.(hit.trendLine.point2.price) ?? this._chartManager.priceToCoordinate(hit.trendLine.point2.price);
-        if (point1X !== null && point1Y !== null) { hit.trendLine.dragPointX1 = point1X; hit.trendLine.dragPointY1 = point1Y; }
-        if (point2X !== null && point2Y !== null) { hit.trendLine.dragPointX2 = point2X; hit.trendLine.dragPointY2 = point2Y; }
-        this._requestRedraw();
-
-        const menu = document.getElementById('trendContextMenu');
-        if (menu) {
-            document.getElementById('drawingContextMenu').style.display = 'none';
-            document.getElementById('alertContextMenu').style.display = 'none';
-
-            // Обработчик для кнопки "Продолжить вправо"
-            const extendBtn = document.getElementById('trendExtendRightBtn');
-            if (extendBtn) {
-                // Подсветка, если опция включена
-                if (hit.trendLine.options.extendRight) {
-                    extendBtn.classList.add('active');
-                } else {
-                    extendBtn.classList.remove('active');
-                }
-                // Замена кнопки для сброса старых обработчиков
-                const newExtendBtn = extendBtn.cloneNode(true);
-                extendBtn.parentNode.replaceChild(newExtendBtn, extendBtn);
-                newExtendBtn.addEventListener('click', (event) => {
-                    event.stopPropagation();
-                    if (this._selectedLine) {
-                        const newState = !this._selectedLine.options.extendRight;
-                        this._selectedLine.updateOptions({ extendRight: newState });
-                        if (newState) {
-                            newExtendBtn.classList.add('active');
-                        } else {
-                            newExtendBtn.classList.remove('active');
-                        }
-                        this._requestRedraw();
-                        this._saveTrendLines();
-                    }
-                });
+    _handleContextMenu(e) {
+        e.preventDefault(); e.stopPropagation();
+        const rect = this._chartManager.chartContainer.getBoundingClientRect();
+        let x = e.clientX - rect.left, y = e.clientY - rect.top;
+        if (this._isMac && this._pixelRatio > 1) { x *= this._pixelRatio; y *= this._pixelRatio; }
+        const hit = this.hitTest(x, y);
+        if (hit?.trendLine) {
+            if (this._selectedLine && this._selectedLine !== hit.trendLine) {
+                this._selectedLine.selected = false; this._selectedLine.showDragPoint1 = false; this._selectedLine.showDragPoint2 = false;
             }
-
-            // Кнопка "Настройки"
-            const settingsBtn = document.getElementById('trendSettingsBtn');
-            const newSettingsBtn = settingsBtn.cloneNode(true);
-            settingsBtn.parentNode.replaceChild(newSettingsBtn, settingsBtn);
-            newSettingsBtn.onclick = (event) => { event.stopPropagation(); this._showSettings(hit.trendLine); menu.style.display = 'none'; };
-
-            // Кнопка "Удалить"
-            const deleteBtn = document.getElementById('trendDeleteBtn');
-            const newDeleteBtn = deleteBtn.cloneNode(true);
-            deleteBtn.parentNode.replaceChild(newDeleteBtn, deleteBtn);
-            newDeleteBtn.onclick = (event) => { event.stopPropagation(); this.deleteTrendLine(hit.trendLine.id); menu.style.display = 'none'; };
-
-            menu.style.display = 'flex';
-            menu.style.left = e.clientX + 'px';
-            menu.style.top = e.clientY + 'px';
-        }
-    } else {
-        const menu = document.getElementById('trendContextMenu');
-        if (menu) menu.style.display = 'none';
+            hit.trendLine.selected = true; hit.trendLine.showDragPoint1 = true; hit.trendLine.showDragPoint2 = true;
+            this._selectedLine = hit.trendLine;
+            const p1x = this._chartManager.timeToCoordinateWithFallback?.(hit.trendLine.point1.time) ?? this._chartManager.timeToCoordinate(hit.trendLine.point1.time);
+            const p1y = this._chartManager.priceToCoordinateWithFallback?.(hit.trendLine.point1.price) ?? this._chartManager.priceToCoordinate(hit.trendLine.point1.price);
+            const p2x = this._chartManager.timeToCoordinateWithFallback?.(hit.trendLine.point2.time) ?? this._chartManager.timeToCoordinate(hit.trendLine.point2.time);
+            const p2y = this._chartManager.priceToCoordinateWithFallback?.(hit.trendLine.point2.price) ?? this._chartManager.priceToCoordinate(hit.trendLine.point2.price);
+            if (p1x !== null && p1y !== null) { hit.trendLine.dragPointX1 = p1x; hit.trendLine.dragPointY1 = p1y; }
+            if (p2x !== null && p2y !== null) { hit.trendLine.dragPointX2 = p2x; hit.trendLine.dragPointY2 = p2y; }
+            this._requestRedraw();
+            const menu = document.getElementById('trendContextMenu');
+            if (menu) {
+                document.getElementById('drawingContextMenu').style.display = 'none';
+                document.getElementById('alertContextMenu').style.display = 'none';
+                const extendBtn = document.getElementById('trendExtendRightBtn');
+                if (extendBtn) {
+                    hit.trendLine.options.extendRight ? extendBtn.classList.add('active') : extendBtn.classList.remove('active');
+                    const nb = extendBtn.cloneNode(true); extendBtn.parentNode.replaceChild(nb, extendBtn);
+                    nb.addEventListener('click', (ev) => { ev.stopPropagation();
+                        if (this._selectedLine) { const ns = !this._selectedLine.options.extendRight; this._selectedLine.updateOptions({ extendRight: ns }); ns ? nb.classList.add('active') : nb.classList.remove('active'); this._requestRedraw(); this._saveTrendLines(); }
+                    });
+                }
+                const sb = document.getElementById('trendSettingsBtn'), nsb = sb.cloneNode(true); sb.parentNode.replaceChild(nsb, sb);
+                nsb.onclick = (ev) => { ev.stopPropagation(); this._showSettings(hit.trendLine); menu.style.display = 'none'; };
+                const db = document.getElementById('trendDeleteBtn'), ndb = db.cloneNode(true); db.parentNode.replaceChild(ndb, db);
+                ndb.onclick = (ev) => { ev.stopPropagation(); this.deleteTrendLine(hit.trendLine.id); menu.style.display = 'none'; };
+                menu.style.display = 'flex'; menu.style.left = e.clientX + 'px'; menu.style.top = e.clientY + 'px';
+            }
+        } else { const menu = document.getElementById('trendContextMenu'); if (menu) menu.style.display = 'none'; }
     }
-}
 
     _handleDblClick(e) {
-        e.preventDefault();
-        e.stopPropagation();
+        e.preventDefault(); e.stopPropagation();
         const rect = this._chartManager.chartContainer.getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const y = e.clientY - rect.top;
+        let x = e.clientX - rect.left, y = e.clientY - rect.top;
+        if (this._isMac && this._pixelRatio > 1) { x *= this._pixelRatio; y *= this._pixelRatio; }
         const hit = this.hitTest(x, y);
         if (hit) this.deleteTrendLine(hit.trendLine.id);
     }
@@ -2285,93 +2169,48 @@ class TrendLineManager {
         if (e.key === 'Delete' && this._selectedLine) { this.deleteTrendLine(this._selectedLine.id); this._selectedLine = null; }
     }
 
-   _startDrawing(x, y) {
-    let price = this._chartManager.coordinateToPrice(y);
-    let time = this._getTimeFromCoordinate(x);
-    let anchorCandle = null;
-    if (price === null || time === null) {
-        const lastCandle = this._chartManager.getLastCandle();
-        if (lastCandle) { price = lastCandle.close; time = lastCandle.time; } else return;
+    _startDrawing(x, y) {
+        let price = this._chartManager.coordinateToPrice(y);
+        let time = this._getTimeFromCoordinate(x);
+        let anchorCandle = null;
+        if (price === null || time === null) { const lc = this._chartManager.getLastCandle(); if (lc) { price = lc.close; time = lc.time; } else return; }
+        if (this._magnetEnabled) { const s = this._snapToPrice(price, time); price = s.price; time = s.time; anchorCandle = s.anchorCandle; }
+        else { const st = this._findClosestCandleTime(time); if (st) time = st; }
+        this._drawingStartPoint = { price, time, x, y, anchorCandle };
+        this._isDrawingSecondPoint = true; this._tempLine = null; this._requestRedraw();
     }
-    if (this._magnetEnabled) {
-        const snapped = this._snapToPrice(price, time);
-        price = snapped.price;
-        time = snapped.time;
-        anchorCandle = snapped.anchorCandle;
-    } else {
-        const snappedTime = this._findClosestCandleTime(time);
-        if (snappedTime) time = snappedTime;
-    }
-    this._drawingStartPoint = { price, time, x, y, anchorCandle };
-    this._isDrawingSecondPoint = true;
-    this._tempLine = null;
-    this._requestRedraw();
-}
 
-_completeDrawing(x, y) {
-    if (!this._drawingStartPoint) return;
-    let price = this._chartManager.coordinateToPrice(y);
-    let time = this._getTimeFromCoordinate(x);
-    
-    if (price === null || time === null) {
-        const lastCandle = this._chartManager.getLastCandle();
-        if (lastCandle) {
-            price = lastCandle.close;
-            time = lastCandle.time;
+    _completeDrawing(x, y) {
+        if (!this._drawingStartPoint) return;
+        let price = this._chartManager.coordinateToPrice(y);
+        let time = this._getTimeFromCoordinate(x);
+        if (price === null || time === null) { const lc = this._chartManager.getLastCandle(); if (lc) { price = lc.close; time = lc.time; } else return; }
+        const startTime = this._drawingStartPoint.time, endTime = time;
+        let point1, point2, ac1, ac2;
+        if (startTime <= endTime) {
+            point1 = { price: this._drawingStartPoint.price, time: startTime };
+            point2 = { price, time: endTime };
+            ac1 = this._drawingStartPoint.anchorCandle; ac2 = null;
         } else {
-            return;
+            point1 = { price, time: endTime };
+            point2 = { price: this._drawingStartPoint.price, time: startTime };
+            ac1 = null; ac2 = this._drawingStartPoint.anchorCandle;
         }
+        this.createTrendLine(point1, point2, { anchorCandle1: ac1, anchorCandle2: ac2,
+            color: document.getElementById('currentColorBox')?.style.backgroundColor || '#4A90E2',
+            lineWidth: parseInt(document.getElementById('settingThickness')?.value) || 2,
+            lineStyle: document.getElementById('templateSelect')?.value || 'solid',
+            opacity: parseInt(document.getElementById('colorOpacity')?.value) / 100 || 0.9
+        });
+        if (this._tempPrimitive) { const s = this._chartManager.currentChartType === 'candle' ? this._chartManager.candleSeries : this._chartManager.barSeries; if (s) try { s.detachPrimitive(this._tempPrimitive); } catch(e) {} this._tempPrimitive = null; }
+        this._drawingStartPoint = null; this._isDrawingSecondPoint = false; this._tempLine = null;
+        this._requestRedraw(); this.setDrawingMode(false);
     }
-    
-    // Вторая точка – БЕЗ МАГНИТА И БЕЗ ПРИВЯЗКИ К СВЕЧАМ
-    // Используем точные координаты как есть
-    
-    const startTime = this._drawingStartPoint.time;
-    const endTime = time;
-    let point1, point2, anchorCandle1, anchorCandle2;
-    
-    if (startTime <= endTime) {
-        point1 = { price: this._drawingStartPoint.price, time: startTime };
-        point2 = { price, time: endTime };
-        anchorCandle1 = this._drawingStartPoint.anchorCandle;
-        anchorCandle2 = null;
-    } else {
-        point1 = { price, time: endTime };
-        point2 = { price: this._drawingStartPoint.price, time: startTime };
-        anchorCandle1 = null;
-        anchorCandle2 = this._drawingStartPoint.anchorCandle;
-    }
-    
-    this.createTrendLine(point1, point2, {
-        anchorCandle1, 
-        anchorCandle2,
-        color: document.getElementById('currentColorBox')?.style.backgroundColor || '#4A90E2',
-        lineWidth: parseInt(document.getElementById('settingThickness')?.value) || 2,
-        lineStyle: document.getElementById('templateSelect')?.value || 'solid',
-        opacity: parseInt(document.getElementById('colorOpacity')?.value) / 100 || 0.9
-    });
-    
-    if (this._tempPrimitive) {
-        const series = this._chartManager.currentChartType === 'candle' ? this._chartManager.candleSeries : this._chartManager.barSeries;
-        if (series) try { series.detachPrimitive(this._tempPrimitive); } catch(e) {}
-        this._tempPrimitive = null;
-    }
-    
-    this._drawingStartPoint = null;
-    this._isDrawingSecondPoint = false;
-    this._tempLine = null;
-    this._requestRedraw();
-    
-    // ВАЖНО: выключаем режим рисования
-    this.setDrawingMode(false);
-}
+
     hitTest(x, y) {
         for (const item of this._trendLines) {
             if (!item.primitive) continue;
-            try {
-                const hit = item.primitive._paneView._renderer.hitTest(x, y);
-                if (hit) return hit;
-            } catch (e) {}
+            try { const hit = item.primitive._paneView._renderer.hitTest(x, y); if (hit) return hit; } catch (e) {}
         }
         return null;
     }
@@ -2382,26 +2221,16 @@ _completeDrawing(x, y) {
         let closestCandle;
         if (time <= data[0].time) closestCandle = data[0];
         else if (time >= data[data.length-1].time) closestCandle = data[data.length-1];
-        else {
-            closestCandle = data[0];
-            let minTimeDiff = Math.abs(data[0].time - time);
-            for (let i = 1; i < data.length; i++) {
-                const diff = Math.abs(data[i].time - time);
-                if (diff < minTimeDiff) { minTimeDiff = diff; closestCandle = data[i]; }
-            }
-        }
+        else { closestCandle = data[0]; let minDiff = Math.abs(data[0].time - time); for (let i = 1; i < data.length; i++) { const d = Math.abs(data[i].time - time); if (d < minDiff) { minDiff = d; closestCandle = data[i]; } } }
         const priceY = this._chartManager.priceToCoordinate(price);
-        const highY = this._chartManager.priceToCoordinate(closestCandle.high);
-        const lowY = this._chartManager.priceToCoordinate(closestCandle.low);
-        const closeY = this._chartManager.priceToCoordinate(closestCandle.close);
+        const highY = this._chartManager.priceToCoordinate(closestCandle.high), lowY = this._chartManager.priceToCoordinate(closestCandle.low), closeY = this._chartManager.priceToCoordinate(closestCandle.close);
         if (priceY === null || highY === null) return { price, time, anchorCandle: null };
-        const dHighPx = Math.abs(highY - priceY), dLowPx = Math.abs(lowY - priceY), dClosePx = Math.abs(closeY - priceY);
+        const dHigh = Math.abs(highY - priceY), dLow = Math.abs(lowY - priceY), dClose = Math.abs(closeY - priceY);
         let snappedPrice = price, anchorType = null;
-        const MAGNET_THRESHOLD = 150;
-        const minDistPx = Math.min(dHighPx, dLowPx, dClosePx);
-        if (minDistPx < MAGNET_THRESHOLD) {
-            if (minDistPx === dHighPx) { snappedPrice = closestCandle.high; anchorType = 'high'; }
-            else if (minDistPx === dLowPx) { snappedPrice = closestCandle.low; anchorType = 'low'; }
+        const minDist = Math.min(dHigh, dLow, dClose);
+        if (minDist < 150) {
+            if (minDist === dHigh) { snappedPrice = closestCandle.high; anchorType = 'high'; }
+            else if (minDist === dLow) { snappedPrice = closestCandle.low; anchorType = 'low'; }
             else { snappedPrice = closestCandle.close; anchorType = 'close'; }
         }
         return { price: snappedPrice, time: closestCandle.time, anchorCandle: { time: closestCandle.time, type: anchorType, price: snappedPrice } };
@@ -2412,111 +2241,60 @@ _completeDrawing(x, y) {
         const data = this._chartManager.chartData;
         if (time <= data[0].time) return data[0].time;
         if (time >= data[data.length-1].time) return data[data.length-1].time;
-        let closestCandle = data[0];
-        let minDiff = Math.abs(data[0].time - time);
-        for (let i = 1; i < data.length; i++) {
-            const diff = Math.abs(data[i].time - time);
-            if (diff < minDiff) { minDiff = diff; closestCandle = data[i]; }
-        }
-        return closestCandle.time;
+        let closest = data[0], minDiff = Math.abs(data[0].time - time);
+        for (let i = 1; i < data.length; i++) { const d = Math.abs(data[i].time - time); if (d < minDiff) { minDiff = d; closest = data[i]; } }
+        return closest.time;
     }
 
     _renderTrendColors(selectedColor) {
         const grid = document.getElementById('trendInlineColorsGrid');
         if (!grid) return;
-        const colors = ['#4A90E2', '#EF5350', '#26A69A', '#FFA726', '#AB47BC', '#5C6BC0', '#66BB6A', '#FF7043', '#7E57C2', '#42A5F5', '#EC407A', '#FFCA28', '#8D6E63', '#B0BEC5', '#FFFFFF', '#F44336', '#E91E63', '#9C27B0', '#673AB7', '#3F51B5', '#2196F3', '#03A9F4', '#00BCD4', '#009688', '#4CAF50'];
+        const colors = ['#4A90E2','#EF5350','#26A69A','#FFA726','#AB47BC','#5C6BC0','#66BB6A','#FF7043','#7E57C2','#42A5F5','#EC407A','#FFCA28','#8D6E63','#B0BEC5','#FFFFFF','#F44336','#E91E63','#9C27B0','#673AB7','#3F51B5','#2196F3','#03A9F4','#00BCD4','#009688','#4CAF50'];
         grid.innerHTML = '';
-        colors.forEach(color => {
-            const square = document.createElement('div');
-            square.className = 'color-square';
-            square.style.backgroundColor = color;
-            if (color === selectedColor) square.classList.add('selected');
-            square.addEventListener('click', () => {
-                document.querySelectorAll('#trendInlineColorsGrid .color-square').forEach(s => s.classList.remove('selected'));
-                square.classList.add('selected');
-                document.getElementById('trendCurrentColorBox').style.backgroundColor = color;
-                document.getElementById('trendHexInputInline').value = color;
-            });
-            grid.appendChild(square);
-        });
-        const addBtn = document.getElementById('trendAddColorInline');
-        const hexInput = document.getElementById('trendHexInputInline');
-        if (addBtn && hexInput) {
-            addBtn.onclick = null;
-            addBtn.onclick = () => {
-                let hex = hexInput.value.trim();
-                if (!hex.startsWith('#')) hex = '#' + hex;
-                if (/^#[0-9A-F]{6}$/i.test(hex)) this._addTrendColor(hex);
-            };
-        }
+        colors.forEach(c => { const s = document.createElement('div'); s.className = 'color-square'; s.style.backgroundColor = c; if (c === selectedColor) s.classList.add('selected'); s.onclick = () => { grid.querySelectorAll('.color-square').forEach(q => q.classList.remove('selected')); s.classList.add('selected'); document.getElementById('trendCurrentColorBox').style.backgroundColor = c; document.getElementById('trendHexInputInline').value = c; }; grid.appendChild(s); });
+        const addBtn = document.getElementById('trendAddColorInline'), hexInput = document.getElementById('trendHexInputInline');
+        if (addBtn && hexInput) { addBtn.onclick = () => { let h = hexInput.value.trim(); if (!h.startsWith('#')) h = '#' + h; if (/^#[0-9A-F]{6}$/i.test(h)) this._addTrendColor(h); }; }
     }
 
     _addTrendColor(hex) {
-        const grid = document.getElementById('trendInlineColorsGrid');
-        if (!grid) return;
-        const square = document.createElement('div');
-        square.className = 'color-square';
-        square.style.backgroundColor = hex;
-        square.addEventListener('click', () => {
-            document.querySelectorAll('#trendInlineColorsGrid .color-square').forEach(s => s.classList.remove('selected'));
-            square.classList.add('selected');
-            document.getElementById('trendCurrentColorBox').style.backgroundColor = hex;
-            document.getElementById('trendHexInputInline').value = hex;
-        });
-        grid.appendChild(square);
+        const grid = document.getElementById('trendInlineColorsGrid'); if (!grid) return;
+        const s = document.createElement('div'); s.className = 'color-square'; s.style.backgroundColor = hex;
+        s.onclick = () => { grid.querySelectorAll('.color-square').forEach(q => q.classList.remove('selected')); s.classList.add('selected'); document.getElementById('trendCurrentColorBox').style.backgroundColor = hex; document.getElementById('trendHexInputInline').value = hex; };
+        grid.appendChild(s);
     }
 
     _showSettings(trendLine) {
-        const settings = document.getElementById('trendSettings');
-        if (!settings) return;
+        const settings = document.getElementById('trendSettings'); if (!settings) return;
         document.getElementById('trendCurrentColorBox').style.backgroundColor = trendLine.options.color;
         document.getElementById('trendHexInputInline').value = trendLine.options.color;
         document.getElementById('trendSettingThickness').value = trendLine.options.lineWidth;
         document.getElementById('trendTemplateSelect').value = trendLine.options.lineStyle;
         document.getElementById('trendColorOpacity').value = Math.round(trendLine.options.opacity * 100);
         document.getElementById('trendColorOpacityValue').textContent = document.getElementById('trendColorOpacity').value + '%';
-        
-        // НОВОЕ: установка чекбокса "Продолжить вправо"
         const extendRightCheckbox = document.getElementById('trendExtendRight');
-        if (extendRightCheckbox) {
-            extendRightCheckbox.checked = trendLine.options.extendRight || false;
-        }
-        
+        if (extendRightCheckbox) extendRightCheckbox.checked = trendLine.options.extendRight || false;
         const hexInput = document.getElementById('trendHexInputInline');
         if (hexInput) hexInput.addEventListener('contextmenu', (e) => e.stopPropagation());
         this._renderTrendColors(trendLine.options.color);
         this._renderTimeframeCheckboxes(trendLine);
-        settings.style.display = 'block';
-        settings.style.left = '50%';
-        settings.style.top = '50%';
-        settings.style.transform = 'translate(-50%, -50%)';
+        settings.style.display = 'block'; settings.style.left = '50%'; settings.style.top = '50%'; settings.style.transform = 'translate(-50%, -50%)';
         let header = settings.querySelector('.settings-header');
         if (!header) {
-            header = document.createElement('div');
-            header.className = 'settings-header';
-            header.style.cssText = 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid #404040;';
-            const title = document.createElement('span');
-            title.textContent = 'Настройки линии';
-            title.style.color = '#FFFFFF';
-            title.style.fontSize = '14px';
-            title.style.fontWeight = 'bold';
-            const closeBtn = document.createElement('button');
-            closeBtn.innerHTML = '✕';
-            closeBtn.style.cssText = 'background: transparent; border: none; color: #B0B0B0; font-size: 18px; cursor: pointer; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; border-radius: 4px;';
-            closeBtn.onmouseover = () => closeBtn.style.background = '#404040';
-            closeBtn.onmouseout = () => closeBtn.style.background = 'transparent';
+            header = document.createElement('div'); header.className = 'settings-header';
+            header.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;padding-bottom:10px;border-bottom:1px solid #404040;';
+            const title = document.createElement('span'); title.textContent = 'Настройки линии'; title.style.color = '#FFFFFF'; title.style.fontSize = '14px'; title.style.fontWeight = 'bold';
+            const closeBtn = document.createElement('button'); closeBtn.innerHTML = '✕';
+            closeBtn.style.cssText = 'background:transparent;border:none;color:#B0B0B0;font-size:18px;cursor:pointer;width:24px;height:24px;display:flex;align-items:center;justify-content:center;border-radius:4px;';
+            closeBtn.onmouseover = () => closeBtn.style.background = '#404040'; closeBtn.onmouseout = () => closeBtn.style.background = 'transparent';
             closeBtn.onclick = (e) => { e.stopPropagation(); settings.style.display = 'none'; };
-            header.appendChild(title);
-            header.appendChild(closeBtn);
-            settings.insertBefore(header, settings.firstChild);
+            header.appendChild(title); header.appendChild(closeBtn); settings.insertBefore(header, settings.firstChild);
         }
         const closeOnOutsideClick = (e) => { if (!settings.contains(e.target) && settings.style.display === 'block') { settings.style.display = 'none'; document.removeEventListener('mousedown', closeOnOutsideClick); } };
         document.removeEventListener('mousedown', closeOnOutsideClick);
-        setTimeout(() => { document.addEventListener('mousedown', closeOnOutsideClick); }, 100);
-        const stylePanel = document.getElementById('trendStylePanel');
-        const visibilityPanel = document.getElementById('trendVisibilityPanel');
+        setTimeout(() => document.addEventListener('mousedown', closeOnOutsideClick), 100);
+        const stylePanel = document.getElementById('trendStylePanel'), visibilityPanel = document.getElementById('trendVisibilityPanel');
         const tabs = document.querySelectorAll('#trendSettings .settings-tab');
-        tabs.forEach(tab => { const newTab = tab.cloneNode(true); tab.parentNode.replaceChild(newTab, tab); });
+        tabs.forEach(tab => { const nt = tab.cloneNode(true); tab.parentNode.replaceChild(nt, tab); });
         document.querySelectorAll('#trendSettings .settings-tab').forEach(tab => {
             tab.addEventListener('click', () => {
                 document.querySelectorAll('#trendSettings .settings-tab').forEach(t => t.classList.remove('active'));
@@ -2525,167 +2303,72 @@ _completeDrawing(x, y) {
                 else { stylePanel.classList.remove('active'); visibilityPanel.classList.add('active'); }
             });
         });
-        const saveBtn = document.getElementById('trendSaveSettings');
-        const deleteBtn = document.getElementById('trendDeleteDrawing');
-        const newSaveBtn = saveBtn.cloneNode(true);
-        const newDeleteBtn = deleteBtn.cloneNode(true);
-        saveBtn.parentNode.replaceChild(newSaveBtn, saveBtn);
-        deleteBtn.parentNode.replaceChild(newDeleteBtn, deleteBtn);
-        newSaveBtn.addEventListener('click', () => {
-            trendLine.updateOptions({
-                color: document.getElementById('trendCurrentColorBox').style.backgroundColor,
-                lineWidth: parseInt(document.getElementById('trendSettingThickness').value),
-                lineStyle: document.getElementById('trendTemplateSelect').value,
-                opacity: parseInt(document.getElementById('trendColorOpacity').value) / 100,
-                extendRight: document.getElementById('trendExtendRight')?.checked || false   // НОВОЕ
-            });
-            this._requestRedraw();
-            settings.style.display = 'none';
-            this._saveTrendLines();
+        const saveBtn = document.getElementById('trendSaveSettings'), deleteBtn = document.getElementById('trendDeleteDrawing');
+        const nsb = saveBtn.cloneNode(true); saveBtn.parentNode.replaceChild(nsb, saveBtn);
+        const ndb = deleteBtn.cloneNode(true); deleteBtn.parentNode.replaceChild(ndb, deleteBtn);
+        nsb.addEventListener('click', () => {
+            trendLine.updateOptions({ color: document.getElementById('trendCurrentColorBox').style.backgroundColor, lineWidth: parseInt(document.getElementById('trendSettingThickness').value), lineStyle: document.getElementById('trendTemplateSelect').value, opacity: parseInt(document.getElementById('trendColorOpacity').value) / 100, extendRight: document.getElementById('trendExtendRight')?.checked || false });
+            this._requestRedraw(); settings.style.display = 'none'; this._saveTrendLines();
         });
-        newDeleteBtn.addEventListener('click', () => {
-            this.deleteTrendLine(trendLine.id);
-            settings.style.display = 'none';
-            this._requestRedraw();
-        });
+        ndb.addEventListener('click', () => { this.deleteTrendLine(trendLine.id); settings.style.display = 'none'; this._requestRedraw(); });
     }
 
     _renderTimeframeCheckboxes(trendLine) {
-        const container = document.getElementById('trendTimeframeCheckboxList');
-        if (!container) return;
+        const container = document.getElementById('trendTimeframeCheckboxList'); if (!container) return;
         const tfLabels = { '1m':'1 минута','3m':'3 минуты','5m':'5 минут','15m':'15 минут','30m':'30 минут','1h':'1 час','4h':'4 часа','6h':'6 часов','12h':'12 часов','1d':'1 день','1w':'1 неделя','1M':'1 месяц' };
-        let html = '';
-        const timeframes = ['1m','3m','5m','15m','30m','1h','4h','6h','12h','1d','1w','1M'];
-        timeframes.forEach(tf => {
-            const isChecked = trendLine.timeframeVisibility[tf] !== false;
-            const label = tfLabels[tf] || tf;
-            html += `<div class="timeframe-checkbox-item"><input type="checkbox" id="trend_tf_${tf}_${trendLine.id}" data-timeframe="${tf}" ${isChecked ? 'checked' : ''}><label for="trend_tf_${tf}_${trendLine.id}">${label}</label><span class="tf-badge">${tf}</span></div>`;
-        });
+        let html = ''; const timeframes = ['1m','3m','5m','15m','30m','1h','4h','6h','12h','1d','1w','1M'];
+        timeframes.forEach(tf => { const isChecked = trendLine.timeframeVisibility[tf] !== false; html += `<div class="timeframe-checkbox-item"><input type="checkbox" id="trend_tf_${tf}_${trendLine.id}" data-timeframe="${tf}" ${isChecked?'checked':''}><label>${tfLabels[tf]||tf}</label><span class="tf-badge">${tf}</span></div>`; });
         container.innerHTML = html;
-        container.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
-            checkbox.addEventListener('change', (e) => { const tf = e.target.dataset.timeframe; trendLine.timeframeVisibility[tf] = e.target.checked; });
-        });
-        const selectAllBtn = document.getElementById('trendSelectAllTimeframes');
-        const deselectAllBtn = document.getElementById('trendDeselectAllTimeframes');
-        if (selectAllBtn) {
-            const newSelectAll = selectAllBtn.cloneNode(true);
-            selectAllBtn.parentNode.replaceChild(newSelectAll, selectAllBtn);
-            newSelectAll.addEventListener('click', () => { container.querySelectorAll('input[type="checkbox"]').forEach(cb => { cb.checked = true; const tf = cb.dataset.timeframe; trendLine.timeframeVisibility[tf] = true; }); });
-        }
-        if (deselectAllBtn) {
-            const newDeselectAll = deselectAllBtn.cloneNode(true);
-            deselectAllBtn.parentNode.replaceChild(newDeselectAll, deselectAllBtn);
-            newDeselectAll.addEventListener('click', () => { container.querySelectorAll('input[type="checkbox"]').forEach(cb => { cb.checked = false; const tf = cb.dataset.timeframe; trendLine.timeframeVisibility[tf] = false; }); });
-        }
+        container.querySelectorAll('input[type="checkbox"]').forEach(cb => { cb.addEventListener('change', (e) => { trendLine.timeframeVisibility[e.target.dataset.timeframe] = e.target.checked; }); });
+        const selectAll = document.getElementById('trendSelectAllTimeframes'), deselectAll = document.getElementById('trendDeselectAllTimeframes');
+        if (selectAll) { const ns = selectAll.cloneNode(true); selectAll.parentNode.replaceChild(ns, selectAll); ns.addEventListener('click', () => container.querySelectorAll('input').forEach(c => { c.checked = true; trendLine.timeframeVisibility[c.dataset.timeframe] = true; })); }
+        if (deselectAll) { const nd = deselectAll.cloneNode(true); deselectAll.parentNode.replaceChild(nd, deselectAll); nd.addEventListener('click', () => container.querySelectorAll('input').forEach(c => { c.checked = false; trendLine.timeframeVisibility[c.dataset.timeframe] = false; })); }
     }
 
-    _requestRedraw() {
-        this._trendLines.forEach(item => { if (item.primitive?.requestRedraw) item.primitive.requestRedraw(); });
-        if (this._tempPrimitive) this._tempPrimitive.requestRedraw();
-    }
+    _requestRedraw() { this._trendLines.forEach(item => { if (item.primitive?.requestRedraw) item.primitive.requestRedraw(); }); if (this._tempPrimitive) this._tempPrimitive.requestRedraw(); }
 
     async _saveTrendLines() {
         if (this._trendLines.length === 0) return;
-        
-        const promises = this._trendLines.map(item => 
-            window.db.put('drawings', {
-                id: item.trendLine.id,
-                type: 'trendline',
-                symbolKey: item.trendLine.symbolKey,
-                data: {
-                    point1: item.trendLine.point1,
-                    point2: item.trendLine.point2,
-                    options: item.trendLine.options,
-                    timeframeVisibility: item.trendLine.timeframeVisibility,
-                    anchorCandle1: item.trendLine.anchorCandle1,
-                    anchorCandle2: item.trendLine.anchorCandle2,
-                    anchorTime1: item.trendLine.anchorTime1,
-                    anchorTime2: item.trendLine.anchorTime2
-                }
-            }).catch(e => console.warn('Save trend line error:', e))
-        );
-        
+        const promises = this._trendLines.map(item => window.db.put('drawings', { id: item.trendLine.id, type: 'trendline', symbolKey: item.trendLine.symbolKey, data: { point1: item.trendLine.point1, point2: item.trendLine.point2, options: item.trendLine.options, timeframeVisibility: item.trendLine.timeframeVisibility, anchorCandle1: item.trendLine.anchorCandle1, anchorCandle2: item.trendLine.anchorCandle2, anchorTime1: item.trendLine.anchorTime1, anchorTime2: item.trendLine.anchorTime2 } }).catch(e => console.warn(e)));
         await Promise.all(promises);
-        console.log(`💾 Saved ${this._trendLines.length} trend lines`);
     }
 
     async loadTrendLines() {
         try {
-            await waitForReady([
-                () => window.dbReady === true,
-                () => this._chartManager?.chartData?.length > 0,
-                () => !!(this._chartManager?.candleSeries || this._chartManager?.barSeries)
-            ]);
-
+            await waitForReady([() => window.dbReady === true, () => this._chartManager?.chartData?.length > 0, () => !!(this._chartManager?.candleSeries || this._chartManager?.barSeries)]);
             const currentKey = this._getCurrentSymbolKey();
-            console.log('📊 Loading trend lines for:', currentKey);
-
             const allDrawings = await window.db.getByIndex('drawings', 'symbolKey', currentKey);
             const lineRecords = allDrawings.filter(d => d.type === 'trendline');
-            const series = this._chartManager.currentChartType === 'candle' 
-                ? this._chartManager.candleSeries 
-                : this._chartManager.barSeries;
-
+            const series = this._chartManager.currentChartType === 'candle' ? this._chartManager.candleSeries : this._chartManager.barSeries;
             const newTrendLines = [];
             for (const rec of lineRecords) {
                 try {
                     const line = new TrendLine(rec.data.point1, rec.data.point2, rec.data.options);
-                    line.id = rec.id;
-                    line.symbolKey = rec.symbolKey;
-                    line.timeframeVisibility = rec.data.timeframeVisibility || {};
-                    line.anchorCandle1 = rec.data.anchorCandle1;
-                    line.anchorCandle2 = rec.data.anchorCandle2;
-                    line.anchorTime1 = rec.data.anchorTime1;
-                    line.anchorTime2 = rec.data.anchorTime2;
-
+                    line.id = rec.id; line.symbolKey = rec.symbolKey; line.timeframeVisibility = rec.data.timeframeVisibility || {};
+                    line.anchorCandle1 = rec.data.anchorCandle1; line.anchorCandle2 = rec.data.anchorCandle2;
+                    line.anchorTime1 = rec.data.anchorTime1; line.anchorTime2 = rec.data.anchorTime2;
                     const primitive = new TrendLinePrimitive(line, this._chartManager);
                     series.attachPrimitive(primitive);
                     newTrendLines.push({ trendLine: line, primitive, series });
-                } catch (e) {
-                    console.warn('Failed to load trend line:', rec.id, e);
-                }
+                } catch (e) { console.warn('Failed to load trend line:', rec.id, e); }
             }
-
-            // Удаляем старые примитивы
-            this._trendLines.forEach(item => {
-                try { item.series?.detachPrimitive(item.primitive); } catch(e) {}
-            });
-
-            this._trendLines = newTrendLines;
-            this._requestRedraw();
-            console.log(`✅ Loaded ${this._trendLines.length} trend lines for ${currentKey}`);
-        } catch (error) {
-            console.error('❌ loadTrendLines failed:', error);
-        }
+            this._trendLines.forEach(item => { try { item.series?.detachPrimitive(item.primitive); } catch(e) {} });
+            this._trendLines = newTrendLines; this._requestRedraw();
+        } catch (error) { console.error('❌ loadTrendLines failed:', error); }
     }
 
     _autoLoadTrendLines() {
         setTimeout(async () => {
             try {
-                if (!window.dbReady) {
-                    await new Promise(resolve => {
-                        const check = () => {
-                            if (window.dbReady) resolve();
-                            else setTimeout(check, 50);
-                        };
-                        check();
-                    });
-                }
-                
-                console.log('🚀 Auto-loading trend lines...');
+                if (!window.dbReady) { await new Promise(r => { const c = () => window.dbReady ? r() : setTimeout(c, 50); c(); }); }
                 await this.loadTrendLines();
-                console.log('✅ Trend lines loaded');
-            } catch (error) {
-                console.error('❌ Auto-load trend lines failed:', error);
-            }
+            } catch (e) { console.error(e); }
         }, 150);
     }
 
-    syncWithNewTimeframe() {
-        // Ничего не делаем – updateAllViews сам всё обновит
-    }
+    syncWithNewTimeframe() {}
 }
-              
+  }            
 // ========== ЛИНЕЙКА-ИЗМЕРИТЕЛЬ (ИСПРАВЛЕННАЯ - НЕ ПРОПАДАЕТ ПРИ СМЕНЕ ТАЙМФРЕЙМА) ==========
 class RulerLine {
     constructor(point1, point2, chartManager, options = {}) {
