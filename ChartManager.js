@@ -1401,6 +1401,7 @@ setDataQuick(data, interval, symbol, exchange = 'binance', marketType = 'futures
         }));
         // =================================================================
         
+        // 1. СНАЧАЛА СОХРАНЯЕМ ДАННЫЕ (чтобы fallback мог их прочитать)
         this.chartData = data;
         this.currentInterval = interval;
         this.currentSymbol = symbol;
@@ -1409,6 +1410,19 @@ setDataQuick(data, interval, symbol, exchange = 'binance', marketType = 'futures
         this.hasMoreData = true;
         this.lastCandle = data[data.length - 1];
         
+        // =================================================================
+        // 2. МГНОВЕННАЯ ТОЧНОСТЬ: ПРИМЕНЯЕМ ДО ОТРИСОВКИ _performUpdate
+        // =================================================================
+        const cachedPrecision = localStorage.getItem(`precision_${symbol}_${exchange}_${marketType}`);
+        if (cachedPrecision) {
+            this.applyPriceFormat(parseInt(cachedPrecision));
+        } else {
+            // Если кэша нет — вычисляем из данных за 0.001мс
+            this.applyPriceFormat(this._inferPrecisionFromData());
+        }
+        // =================================================================
+
+        // 3. ТОЛЬКО ТЕПЕРЬ РИСУЕМ (с правильной точностью с первого кадра!)
         this._performUpdate();
         
         // ========== ОБНОВЛЯЕМ ОБЪЁМ ==========
@@ -1432,11 +1446,10 @@ setDataQuick(data, interval, symbol, exchange = 'binance', marketType = 'futures
             this.indicatorManager.loadIndicators();
         }
         
-        this.loadDrawingsForCurrentSymbol();
+        
         
         // =================================================================
-        // ИСПРАВЛЕНИЕ "ПАЛОК": Ждем 1 кадр (~16мс), чтобы ядро графика 
-        // гарантированно рассчитало внутренние границы цен перед автомасштабом
+        // 4. ИСПРАВЛЕНИЕ "ПАЛОК" И MAC: Ждем 1 кадр для автомасштаба
         // =================================================================
         requestAnimationFrame(() => {
             this.autoScale(); 
@@ -1450,7 +1463,6 @@ setDataQuick(data, interval, symbol, exchange = 'binance', marketType = 'futures
     } else {
         console.warn('setDataQuick: нет данных');
     }
-    
     this._lastTimeframe = interval;
 
     if (!window._dailySeparator) {
@@ -1792,30 +1804,17 @@ _subscribeToPrice() {
     }
     // ДОБАВЬ ЭТОТ МЕТОД В ChartManager
 // Метод для вычисления точности из самих данных (Fallback)
-    _inferPrecisionFromData() {
-        if (!this.chartData || this.chartData.length < 2) return 2;
-        
-        let minDiff = Infinity;
-        // Берем последние 20 свечей и ищем минимальную разницу между ценами
-        const slice = this.chartData.slice(-20);
-        for (const c of slice) {
-            const diffBody = Math.abs(c.close - c.open);
-            const diffWick = Math.abs(c.high - c.low);
-            if (diffBody > 0) minDiff = Math.min(minDiff, diffBody);
-            if (diffWick > 0) minDiff = Math.min(minDiff, diffWick);
-        }
-        
-        // Если все свечи с нулевым телом (доджи), берем разницу высоких/низких
-        if (minDiff === Infinity) return 2;
-        
-        // Считаем количество знаков после запятой в минимальной разнице
-        const str = minDiff.toFixed(10).replace(/0+$/, ''); // Убираем нули в конце
-        if (str.includes('.')) {
-            return str.split('.')[1].length;
-        }
-        
-        return 2;
+_inferPrecisionFromData() {
+    if (!this.chartData || this.chartData.length === 0) return 2;
+    const lastPrice = this.chartData[this.chartData.length - 1].close;
+    if (!lastPrice || lastPrice === 0) return 2;
+    
+    const str = lastPrice.toString();
+    if (str.includes('.')) {
+        return str.split('.')[1].length; // Считаем знаки после запятой
     }
+    return 2; // Дефолт для целых чисел
+}
 
 // Обновленный метод с обработкой ошибок и принудительным обновлением
 applyPriceFormat(precision) {
