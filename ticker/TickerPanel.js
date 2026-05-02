@@ -499,18 +499,26 @@ class TickerPanel {
         this.filterCache = null;
         this.renderTickerList();
     }
-
     handleKeyDelete(e) {
-        if (e.key !== 'Delete') return;
+        // ИСПРАВЛЕНИЕ: Разрешаем и Delete, и Backspace (для MacBook)
+        if (e.key !== 'Delete' && e.key !== 'Backspace') return;
+        
         const activeElement = document.activeElement;
         if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA' || activeElement.tagName === 'SELECT')) return;
+        
         const activeTicker = document.querySelector('.ticker-item.active');
         if (!activeTicker) return;
         e.preventDefault();
+        
         const symbol = activeTicker.dataset.symbol, exchange = activeTicker.dataset.exchange, marketType = activeTicker.dataset.marketType;
         if (symbol && exchange && marketType) {
             const notification = document.getElementById('alertNotification');
-            if (notification) { notification.innerHTML = `<div class="alert-title">🗑️ Удален</div><div class="alert-price">${symbol}</div><div class="alert-repeat">${exchange} ${marketType}</div>`; notification.style.display = 'block'; notification.style.borderLeftColor = '#f23645'; setTimeout(() => notification.style.display = 'none', 2000); }
+            if (notification) { 
+                notification.innerHTML = `<div class="alert-title">🗑️ Удален</div><div class="alert-price">${symbol}</div><div class="alert-repeat">${exchange} ${marketType}</div>`; 
+                notification.style.display = 'block'; 
+                notification.style.borderLeftColor = '#f23645'; 
+                setTimeout(() => notification.style.display = 'none', 2000); 
+            }
             this.removeSymbol(symbol, exchange, marketType);
         }
     }
