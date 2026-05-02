@@ -276,7 +276,7 @@ class TickerPanel {
         this.updateModalCount();
     }
 
-    addInitialSymbols() {
+       addInitialSymbols() {
     const savedSymbols = this.state.customSymbols;
     savedSymbols.forEach(symbolKey => {
         const parts = symbolKey.split(':');
@@ -295,10 +295,7 @@ class TickerPanel {
         if (byF?.retCode === 0) byF.result.list.forEach(t => { const tk=this.tickersMap.get(`${t.symbol}:bybit:futures`); if(tk) { tk.price=parseFloat(t.lastPrice); tk.change=parseFloat(t.price24hPcnt)*100; tk.volume=parseFloat(t.volume24h)*parseFloat(t.lastPrice); }});
         if (byS?.retCode === 0) byS.result.list.forEach(t => { const tk=this.tickersMap.get(`${t.symbol}:bybit:spot`); if(tk) { tk.price=parseFloat(t.lastPrice); tk.change=parseFloat(t.price24hPcnt)*100; tk.volume=parseFloat(t.volume24h)*parseFloat(t.lastPrice); }});
 
-        // 1. Отрисовываем список
         this.renderTickerList();
-        
-        // 2. Убираем лоадер и запускаем CSS анимацию
         requestAnimationFrame(() => {
             const container = document.getElementById('tickerListContainer');
             const loader = document.getElementById('tickerLoader');
@@ -306,15 +303,9 @@ class TickerPanel {
             if (loader) loader.style.display = 'none';
         });
         
-        // 3. Ждем завершения CSS анимации (например, 600мс) + ваш запас 900мс = 1500мс
         setTimeout(() => {
-            // Снимаем замок! Теперь глобальный priceManager может спокойно обновлять DOM
             this._blockDOMUpdates = false; 
-            
-            // Принудительно обновляем, чтобы подхватить цены, которые пришли за время анимации
             this.updatePriceImmediate(); 
-            
-            // Запускаем ваш личный движок
             this.startTickerPanelPriceEngine();
         }, 1500);
         
@@ -388,7 +379,7 @@ class TickerPanel {
         }, 2000); // Раз в 2 секунды
     }
 
-      clearAllSymbols() {
+          clearAllSymbols() {
         this.tickers = []; 
         this.tickersMap.clear(); 
         this.state.customSymbols = []; 
@@ -407,12 +398,6 @@ class TickerPanel {
             container.scrollTop = 0; 
         }
         
-        // ИСПРАВЛЕНИЕ: Вместо просто рендера, вызываем метод очистки активного списка.
-        // Он сам очистит symbols[], сохранит это в IndexedDB и обновит счетчик!
-        if (this.watchlistManager) {
-            this.watchlistManager.clearActiveList(); 
-        }
-        
         this.saveState();
     }
 
@@ -426,7 +411,7 @@ class TickerPanel {
         this.tickers.push(newTicker);
         this.tickersMap.set(key, newTicker);
         
-        if (window.priceManagerInstance && exchange === 'binance') window.priceManagerInstance.subscribe(symbol, (price) => this._onPriceUpdate(symbol, price));
+        if (window.priceManagerInstance) window.priceManagerInstance.subscribe(symbol, (price) => this._onPriceUpdate(symbol, price));
         
         if (isCustom && !this.state.customSymbols.includes(key)) { this.state.customSymbols.push(key); this.saveState(); }
         if (isCustom && this.watchlistManager && !skipWatchlistSync) { this.watchlistManager.addSymbolToActiveList(symbol, exchange, marketType); this.watchlistManager.renderDropdown(); }
@@ -445,7 +430,7 @@ class TickerPanel {
             const newTicker = { symbol, price: 0, change: 0, volume: 0, trades: null, custom: true, prevPrice: 0, exchange, marketType, flag: this.state.flags[key] || null };
             this.tickers.push(newTicker); this.tickersMap.set(key, newTicker);
             if (!this.state.customSymbols.includes(key)) this.state.customSymbols.push(key);
-            if (window.priceManagerInstance && exchange === 'binance') window.priceManagerInstance.subscribe(symbol, (price) => this._onPriceUpdate(symbol, price));
+            if (window.priceManagerInstance) window.priceManagerInstance.subscribe(symbol, (price) => this._onPriceUpdate(symbol, price));
             if (this.watchlistManager) this.watchlistManager.addSymbolToActiveList(symbol, exchange, marketType);
             addedSymbols.push({ symbol, exchange, marketType });
         });
