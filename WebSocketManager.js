@@ -8,7 +8,7 @@ class WebSocketManager {
         this.currentExchange = 'binance';
     }
 
-    connectKline(symbol, interval, exchange, marketType) {
+      connectKline(symbol, interval, exchange, marketType) {
         if (!symbol) {
             console.warn('❌ WebSocket: symbol is undefined, сохраняем старый');
             symbol = this.currentSymbol || 'BTCUSDT';
@@ -32,6 +32,9 @@ class WebSocketManager {
         this.currentSymbol = symbol;
         this.currentInterval = interval;
         this.currentExchange = exchange;
+        
+        // ИСПРАВЛЕНИЕ 1: Сбрасываем старую цену! Таймер перестанет рисовать призраков.
+     
 
         let wsUrl;
         if (exchange === 'bybit') {
@@ -47,7 +50,7 @@ class WebSocketManager {
 
         ws.onopen = () => {
             console.log('✅ Trade (свечи) открыт:', exchange);
-            this.wsKline = ws; // ← СОХРАНЯЕМ ТОЛЬКО ПРИ ОТКРЫТИИ!
+            this.wsKline = ws; 
             if (exchange === 'bybit') {
                 ws.send(JSON.stringify({
                     op: 'subscribe',
@@ -101,9 +104,13 @@ class WebSocketManager {
                 }
 
                 cm.currentRealPrice = price;
+                
+                // ИСПРАВЛЕНИЕ 2: Берем цвет ТОЛЬКО из обновленной lastCandle, чтобы не было рассинхрона
                 const series = cm.currentChartType === 'candle' ? cm.candleSeries : cm.barSeries;
                 if (series) {
-                    const isBullish = last.close >= last.open;
+                    const activeCandle = cm.lastCandle;
+                    // ИСПРАВЛЕНИЕ 3: Если close == open (дожатие), считаем красной
+                    const isBullish = activeCandle.close > activeCandle.open;
                     const lineColor = isBullish 
                         ? (cm.bullishColor || '#00bcd4') 
                         : (cm.bearishColor || '#f23645');
@@ -137,4 +144,4 @@ class WebSocketManager {
     }
 }
 
-if (typeof window !== 'undefined') window.WebSocketManager = WebSocketManager;
+if (typeof window !== 'undefined') window.WebSocketManager = WebSocketManager; 
