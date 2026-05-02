@@ -249,54 +249,57 @@ class TickerRenderer {
     }
 }
     
-   createTickerElement(ticker, index) {
-    const div = document.createElement('div');
-    div.className = `ticker-item ${ticker.symbol === this.parent.state.currentSymbol && 
-        ticker.exchange === this.parent.state.currentExchange && 
-        ticker.marketType === this.parent.state.currentMarketType ? 'active' : ''}`;
-    div.dataset.symbol = ticker.symbol;
-    div.dataset.exchange = ticker.exchange;
-    div.dataset.marketType = ticker.marketType;
-    div.style.display = 'grid';
-    div.style.gridTemplateColumns = '1.3fr 1fr 0.7fr 0.8fr 0.7fr';
-    div.style.alignItems = 'center';
-    div.style.gap = '4px';
-    div.style.padding = '6px 8px';
-    div.style.minHeight = '36px';
-    div.style.borderBottom = '1px solid #2B3139';
+     createTickerElement(ticker, index) {
+        const div = document.createElement('div');
+        div.className = `ticker-item ${ticker.symbol === this.parent.state.currentSymbol && 
+            ticker.exchange === this.parent.state.currentExchange && 
+            ticker.marketType === this.parent.state.currentMarketType ? 'active' : ''}`;
+        div.dataset.symbol = ticker.symbol;
+        div.dataset.exchange = ticker.exchange;
+        div.dataset.marketType = ticker.marketType;
+        div.style.display = 'grid';
+        div.style.gridTemplateColumns = '1.3fr 1fr 0.7fr 0.8fr 0.7fr';
+        div.style.alignItems = 'center';
+        div.style.gap = '4px';
+        div.style.padding = '6px 8px';
+        div.style.minHeight = '36px';
+        div.style.borderBottom = '1px solid #2B3139';
 
-    const flag = this.parent.state.flags[`${ticker.symbol}:${ticker.exchange}:${ticker.marketType}`] || null;
-    const flagHTML = flag ? 
-        `<div class="flag flag-${flag}"></div>` : 
-        '<div class="flag-placeholder"></div>';
+        const flag = this.parent.state.flags[`${ticker.symbol}:${ticker.exchange}:${ticker.marketType}`] || null;
+        const flagHTML = flag ? 
+            `<div class="flag flag-${flag}"></div>` : 
+            '<div class="flag-placeholder"></div>';
 
-    const isFavorite = this.parent.state.favorites.includes(ticker.symbol) ? 'favorite' : '';
-    const markerLetter = ticker.marketType === 'futures' ? 'F' : 'S';
-    const markerClass = ticker.marketType === 'futures' ? 'futures' : 'spot';
-    
-    let displayName = ticker.symbol.replace('USDT', '');
-    const match = displayName.match(/^(\d+)([A-Z]+)$/);
-    if (match) displayName = '1' + match[2];
-    else if (displayName.length > 8) displayName = displayName.substring(0, 7) + '…';
+        const isFavorite = this.parent.state.favorites.includes(ticker.symbol) ? 'favorite' : '';
+        const markerLetter = ticker.marketType === 'futures' ? 'F' : 'S';
+        const markerClass = ticker.marketType === 'futures' ? 'futures' : 'spot';
+        
+        let displayName = ticker.symbol.replace('USDT', '');
+        const match = displayName.match(/^(\d+)([A-Z]+)$/);
+        if (match) displayName = '1' + match[2];
+        else if (displayName.length > 8) displayName = displayName.substring(0, 7) + '…';
 
-    const priceClass = ticker.change > 0 ? 'positive' : (ticker.change < 0 ? 'negative' : '');
+        const priceClass = ticker.change > 0 ? 'positive' : (ticker.change < 0 ? 'negative' : '');
 
-    div.innerHTML = `
-        <div class="ticker-name" style="display:flex;align-items:center;gap:4px;overflow:hidden;">
-            ${flagHTML}
-            <sup class="market-sup ${markerClass}" style="font-size:7px;font-weight:bold;margin-right:2px;flex-shrink:0;">${markerLetter}</sup>
-            <span class="symbol-text" title="${ticker.symbol}" style="font-size:0.75rem;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0;">${displayName}</span>
-            <span class="star ${isFavorite}" data-symbol="${ticker.symbol}" title="Избранное" style="flex-shrink:0;margin-left:2px;">★</span>
-        </div>
-        <div class="ticker-price ${priceClass}" style="text-align:right;white-space:nowrap;font-size:0.7rem;font-family:monospace;">${this.formatPrice(ticker.price)}</div>
-        <div class="ticker-change ${priceClass}" style="text-align:right;white-space:nowrap;font-size:0.7rem;font-family:monospace;">${this.formatChange(ticker.change)}%</div>
-        <div class="ticker-volume" style="text-align:right;white-space:nowrap;font-size:0.7rem;font-family:monospace;">${this.formatVolume(ticker.volume)}</div>
-        <div class="ticker-trades" style="text-align:right;white-space:nowrap;font-size:0.7rem;font-family:monospace;">${this.formatTrades(ticker)}</div>
-    `;
+        // ====================================================================
+        // ВНИМАНИЕ: Добавлены атрибуты data-ctx="symbol" и data-ctx="block"
+        // ====================================================================
+        div.innerHTML = `
+            <div class="ticker-name" style="display:flex;align-items:center;gap:4px;overflow:hidden;" data-ctx="symbol">
+                ${flagHTML}
+                <sup class="market-sup ${markerClass}" style="font-size:7px;font-weight:bold;margin-right:2px;flex-shrink:0;" data-ctx="block">${markerLetter}</sup>
+                <span class="symbol-text" title="${ticker.symbol}" style="font-size:0.75rem;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0;">${displayName}</span>
+                <span class="star ${isFavorite}" data-symbol="${ticker.symbol}" title="Избранное" style="flex-shrink:0;margin-left:2px;" data-ctx="block">★</span>
+            </div>
+            <div class="ticker-price ${priceClass}" style="text-align:right;white-space:nowrap;font-size:0.7rem;font-family:monospace;" data-ctx="block">${this.formatPrice(ticker.price)}</div>
+            <div class="ticker-change ${priceClass}" style="text-align:right;white-space:nowrap;font-size:0.7rem;font-family:monospace;" data-ctx="block">${this.formatChange(ticker.change)}%</div>
+            <div class="ticker-volume" style="text-align:right;white-space:nowrap;font-size:0.7rem;font-family:monospace;" data-ctx="block">${this.formatVolume(ticker.volume)}</div>
+            <div class="ticker-trades" style="text-align:right;white-space:nowrap;font-size:0.7rem;font-family:monospace;" data-ctx="block">${this.formatTrades(ticker)}</div>
+        `;
+        // ====================================================================
 
-    return div;
-}
-    
+        return div;
+    }
     formatPrice(price) {
         if (!price || price <= 0) return '...';
         
