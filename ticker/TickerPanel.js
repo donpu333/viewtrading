@@ -41,6 +41,7 @@ class TickerPanel {
         this._renderScheduled = this.renderer._renderScheduled;
         this._renderRafId = this.renderer._renderRafId;
         this._firstRender = this.renderer._firstRender;
+        this._blockDOMUpdates = true; // Блокируем обновление DOM до конца первой отрисовки
         
         // Пробрасываем методы
         this.loadUserData = this.storage.loadUserData.bind(this.storage);
@@ -162,17 +163,18 @@ class TickerPanel {
         }, 100);
     }
 
-    async initializeDataParallel() {
-        const container = document.getElementById('tickerListContainer');
-        const loaded = await this.loadFromIndexedDB();
-        
-        if (loaded) {
-            this.addInitialSymbols();
-            this.renderTickerList();
-            this.updateModalCount();
-            setTimeout(() => this.refreshSymbolCache(10000).catch(err => console.warn('⚠️ Фон. обновление:', err)), 1000);
-            return;
-        }
+   async initializeDataParallel() {
+    const container = document.getElementById('tickerListContainer');
+    const loaded = await this.loadFromIndexedDB();
+    
+    if (loaded) {
+        this.addInitialSymbols(); // <-- Убрали this.renderTickerList(); отсюда!
+        this.updateModalCount();
+        setTimeout(() => this.refreshSymbolCache(10000).catch(err => console.warn('⚠️ Фон. обновление:', err)), 1000);
+        return;
+    }
+    
+    
         
         if (container) container.innerHTML = '';
         
@@ -236,14 +238,17 @@ class TickerPanel {
     }
     
     _onPriceUpdate(symbol, price) {
-        for (const [key, ticker] of this.tickersMap.entries()) {
-            if (key.startsWith(symbol + ':') && ticker.price !== price) {
-                ticker.price = price;
-                ticker.prevPrice = price;
-            }
+    for (const [key, ticker] of this.tickersMap.entries()) {
+        if (key.startsWith(symbol + ':') && ticker.price !== price) {
+            ticker.price = price;
+            ticker.prevPrice = price;
         }
+    }
+    // ОБЯЗАТЕЛЬНО: обновляем DOM только если замок снят
+    if (!this._blockDOMUpdates) {
         this.renderer.updatePriceElements();
     }
+}
 
     processParallelData(results, updateOnly = false) {
         const MAX_SYMBOLS = 4000;
@@ -271,46 +276,52 @@ class TickerPanel {
         this.updateModalCount();
     }
 
-     addInitialSymbols() {
-        const savedSymbols = this.state.customSymbols;
-        savedSymbols.forEach(symbolKey => {
-            const parts = symbolKey.split(':');
-            if (parts.length === 3) this.addSymbol(parts[0], true, parts[1], parts[2], false, false, true);
-        });
-        this.updateModalCount();
-        
-        Promise.all([
-            fetch('https://fapi.binance.com/fapi/v1/ticker/24hr').then(r => r.json()).catch(() => []),
-            fetch('https://api.binance.com/api/v3/ticker/24hr').then(r => r.json()).catch(() => []),
-            fetch('https://api.bybit.com/v5/market/tickers?category=linear').then(r => r.json()).catch(() => null),
-            fetch('https://api.bybit.com/v5/market/tickers?category=spot').then(r => r.json()).catch(() => null)
-        ]).then(([bnF, bnS, byF, byS]) => {
-            if (Array.isArray(bnF)) bnF.forEach(t => { const tk=this.tickersMap.get(`${t.symbol}:binance:futures`); if(tk) { tk.price=parseFloat(t.lastPrice); tk.change=parseFloat(t.priceChangePercent); tk.volume=parseFloat(t.quoteVolume); tk.trades=parseInt(t.count); }});
-            if (Array.isArray(bnS)) bnS.forEach(t => { const tk=this.tickersMap.get(`${t.symbol}:binance:spot`); if(tk) { tk.price=parseFloat(t.lastPrice); tk.change=parseFloat(t.priceChangePercent); tk.volume=parseFloat(t.quoteVolume); tk.trades=parseInt(t.count); }});
-            if (byF?.retCode === 0) byF.result.list.forEach(t => { const tk=this.tickersMap.get(`${t.symbol}:bybit:futures`); if(tk) { tk.price=parseFloat(t.lastPrice); tk.change=parseFloat(t.price24hPcnt)*100; tk.volume=parseFloat(t.volume24h)*parseFloat(t.lastPrice); }});
-            if (byS?.retCode === 0) byS.result.list.forEach(t => { const tk=this.tickersMap.get(`${t.symbol}:bybit:spot`); if(tk) { tk.price=parseFloat(t.lastPrice); tk.change=parseFloat(t.price24hPcnt)*100; tk.volume=parseFloat(t.volume24h)*parseFloat(t.lastPrice); }});
+    addInitialSymbols() {
+    const savedSymbols = this.state.customSymbols;
+    savedSymbols.forEach(symbolKey => {
+        const parts = symbolKey.split(':');
+        if (parts.length === 3) this.addSymbol(parts[0], true, parts[1], parts[2], false, false, true);
+    });
+    this.updateModalCount();
+    
+    Promise.all([
+        fetch('https://fapi.binance.com/fapi/v1/ticker/24hr').then(r => r.json()).catch(() => []),
+        fetch('https://api.binance.com/api/v3/ticker/24hr').then(r => r.json()).catch(() => []),
+        fetch('https://api.bybit.com/v5/market/tickers?category=linear').then(r => r.json()).catch(() => null),
+        fetch('https://api.bybit.com/v5/market/tickers?category=spot').then(r => r.json()).catch(() => null)
+    ]).then(([bnF, bnS, byF, byS]) => {
+        if (Array.isArray(bnF)) bnF.forEach(t => { const tk=this.tickersMap.get(`${t.symbol}:binance:futures`); if(tk) { tk.price=parseFloat(t.lastPrice); tk.change=parseFloat(t.priceChangePercent); tk.volume=parseFloat(t.quoteVolume); tk.trades=parseInt(t.count); }});
+        if (Array.isArray(bnS)) bnS.forEach(t => { const tk=this.tickersMap.get(`${t.symbol}:binance:spot`); if(tk) { tk.price=parseFloat(t.lastPrice); tk.change=parseFloat(t.priceChangePercent); tk.volume=parseFloat(t.quoteVolume); tk.trades=parseInt(t.count); }});
+        if (byF?.retCode === 0) byF.result.list.forEach(t => { const tk=this.tickersMap.get(`${t.symbol}:bybit:futures`); if(tk) { tk.price=parseFloat(t.lastPrice); tk.change=parseFloat(t.price24hPcnt)*100; tk.volume=parseFloat(t.volume24h)*parseFloat(t.lastPrice); }});
+        if (byS?.retCode === 0) byS.result.list.forEach(t => { const tk=this.tickersMap.get(`${t.symbol}:bybit:spot`); if(tk) { tk.price=parseFloat(t.lastPrice); tk.change=parseFloat(t.price24hPcnt)*100; tk.volume=parseFloat(t.volume24h)*parseFloat(t.lastPrice); }});
 
-            // 1. Отрисовываем список (пока он скрыт под лоадером)
-            this.renderTickerList();
-            
-            // 2. ИДЕАЛЬНАЯ СИНХРОНИЗАЦИЯ: В одном кадре убираем лоадер и включаем плавное появление
-            requestAnimationFrame(() => {
-                const container = document.getElementById('tickerListContainer');
-                const loader = document.getElementById('tickerLoader');
-                if (container) container.classList.add('ready');
-                if (loader) loader.style.display = 'none';
-            });
-            
-            // 3. ЗАДЕРЖКА СТАРТА ДВИЖКА: Даем CSS анимации спокойно завершиться (например, 1 сек), 
-            // и только потом запускаем фоновое обновление цен, чтобы оно не дергало список
-            setTimeout(() => {
-                this.startTickerPanelPriceEngine();
-            }, 1500);
-            
-        }).catch(e => console.error('❌ Ошибка загрузки:', e));
+        // 1. Отрисовываем список
+        this.renderTickerList();
         
-        this.setupDelegatedEvents();
-    }
+        // 2. Убираем лоадер и запускаем CSS анимацию
+        requestAnimationFrame(() => {
+            const container = document.getElementById('tickerListContainer');
+            const loader = document.getElementById('tickerLoader');
+            if (container) container.classList.add('ready');
+            if (loader) loader.style.display = 'none';
+        });
+        
+        // 3. Ждем завершения CSS анимации (например, 600мс) + ваш запас 900мс = 1500мс
+        setTimeout(() => {
+            // Снимаем замок! Теперь глобальный priceManager может спокойно обновлять DOM
+            this._blockDOMUpdates = false; 
+            
+            // Принудительно обновляем, чтобы подхватить цены, которые пришли за время анимации
+            this.updatePriceImmediate(); 
+            
+            // Запускаем ваш личный движок
+            this.startTickerPanelPriceEngine();
+        }, 1500);
+        
+    }).catch(e => console.error('❌ Ошибка загрузки:', e));
+    
+    this.setupDelegatedEvents();
+}
     // ======================================================
     // УМНЫЙ ДВИЖОК ЦЕН (Обновляет только добавленные тикеры)
     // ======================================================
