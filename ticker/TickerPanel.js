@@ -388,13 +388,31 @@ class TickerPanel {
         }, 2000); // Раз в 2 секунды
     }
 
-    clearAllSymbols() {
-        this.tickers = []; this.tickersMap.clear(); this.state.customSymbols = []; this.state.favorites = []; this.state.flags = {};
-        this.tickerElements.clear(); this.displayedTickers = []; this.totalItems = 0;
-        this.filterCache = null; this.formatCache = { prices: new Map(), volumes: new Map(), changes: new Map() };
+      clearAllSymbols() {
+        this.tickers = []; 
+        this.tickersMap.clear(); 
+        this.state.customSymbols = []; 
+        this.state.favorites = []; 
+        this.state.flags = {};
+        this.tickerElements.clear(); 
+        this.displayedTickers = []; 
+        this.totalItems = 0;
+        this.filterCache = null; 
+        this.formatCache = { prices: new Map(), volumes: new Map(), changes: new Map() };
+        
         const container = document.getElementById('tickerListContainer');
-        if (container) { container.innerHTML = ''; container.style.height = 'auto'; container.scrollTop = 0; }
-        if (this.watchlistManager) this.watchlistManager.renderDropdown();
+        if (container) { 
+            container.innerHTML = ''; 
+            container.style.height = 'auto'; 
+            container.scrollTop = 0; 
+        }
+        
+        // ИСПРАВЛЕНИЕ: Вместо просто рендера, вызываем метод очистки активного списка.
+        // Он сам очистит symbols[], сохранит это в IndexedDB и обновит счетчик!
+        if (this.watchlistManager) {
+            this.watchlistManager.clearActiveList(); 
+        }
+        
         this.saveState();
     }
 
