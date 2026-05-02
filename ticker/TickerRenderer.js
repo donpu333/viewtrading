@@ -188,67 +188,83 @@ class TickerRenderer {
         container.addEventListener('scroll', this._scrollHandler);
     }
     
-   renderVisibleTickers() {
-    const container = document.getElementById('tickerListContainer');
-    if (!container || !this.displayedTickers || this.totalItems === 0) return;
-    
-    const itemsContainer = container.querySelector('.ticker-items-container');
-    if (!itemsContainer) return;
-    
-    const scrollTop = container.scrollTop;
-    const startIndex = Math.max(0, Math.floor(scrollTop / this.rowHeight));
-    const endIndex = Math.min(startIndex + this.visibleCount + 10, this.totalItems);
-    
-    if (startIndex >= endIndex) return;
-    
-    const visibleKeys = new Set();
-    
-    for (let i = startIndex; i < endIndex; i++) {
-        const ticker = this.displayedTickers[i];
-        if (!ticker) continue;
+      renderVisibleTickers() {
+        const container = document.getElementById('tickerListContainer');
+        if (!container || !this.displayedTickers || this.totalItems === 0) return;
         
-        const key = `${ticker.symbol}:${ticker.exchange}:${ticker.marketType}`;
-        visibleKeys.add(key);
+        const itemsContainer = container.querySelector('.ticker-items-container');
+        if (!itemsContainer) return;
         
-        let el = this.tickerElements.get(key);
-        if (!el) {
-            el = this.createTickerElement(ticker, i);
-            this.tickerElements.set(key, el);
+        const scrollTop = container.scrollTop;
+        const startIndex = Math.max(0, Math.floor(scrollTop / this.rowHeight));
+        const endIndex = Math.min(startIndex + this.visibleCount + 10, this.totalItems);
+        
+        if (startIndex >= endIndex) return;
+        
+        const visibleKeys = new Set();
+        
+        // ИСПРАВЛЕНИЕ 1: Создаем буфер в памяти. 
+        // Теперь DOM не будет перерисовываться на каждой итерации цикла!
+        const fragment = document.createDocumentFragment();
+        
+        for (let i = startIndex; i < endIndex; i++) {
+            const ticker = this.displayedTickers[i];
+            if (!ticker) continue;
+            
+            const key = `${ticker.symbol}:${ticker.exchange}:${ticker.marketType}`;
+            visibleKeys.add(key);
+            
+            let el = this.tickerElements.get(key);
+            const isNewElement = !el;
+            
+            if (isNewElement) {
+                el = this.createTickerElement(ticker, i);
+                this.tickerElements.set(key, el);
+            }
+            
+            // Обновляем позицию
+            el.style.position = 'absolute';
+            el.style.top = (i * this.rowHeight) + 'px';
+            el.style.left = '0';
+            el.style.right = '0';
+            el.style.width = '100%';
+            el.style.display = ''; // ПОКАЗЫВАЕМ
+            
+            // ИСПРАВЛЕНИЕ 2: Обновляем текст ТОЛЬКО если элемент переиспользуется (скроллили назад).
+            // При первичной загрузке createTickerElement УЖЕ вставил правильные цены через innerHTML.
+            // Это убирает лишние операции поиска по DOM.
+            if (!isNewElement) {
+                const priceEl = el.querySelector('.ticker-price');
+                const changeEl = el.querySelector('.ticker-change');
+                const volumeEl = el.querySelector('.ticker-volume');
+                
+                if (priceEl) priceEl.textContent = this.formatPrice(ticker.price);
+                if (changeEl) {
+                    changeEl.textContent = this.formatChange(ticker.change) + '%';
+                    changeEl.className = `ticker-change ${ticker.change > 0 ? 'positive' : ticker.change < 0 ? 'negative' : ''}`;
+                }
+                if (volumeEl) volumeEl.textContent = this.formatVolume(ticker.volume);
+            }
+            
+            // Если элемент еще не в DOM, складываем в буфер, а не напрямую в контейнер
+            if (!el.parentNode) {
+                fragment.appendChild(el);
+            }
         }
         
-        // Обновляем позицию
-        el.style.position = 'absolute';
-        el.style.top = (i * this.rowHeight) + 'px';
-        el.style.left = '0';
-        el.style.right = '0';
-        el.style.width = '100%';
-        el.style.display = ''; // ПОКАЗЫВАЕМ
-        
-        // Обновляем содержимое (цена могла измениться)
-        const priceEl = el.querySelector('.ticker-price');
-        const changeEl = el.querySelector('.ticker-change');
-        const volumeEl = el.querySelector('.ticker-volume');
-        
-        if (priceEl) priceEl.textContent = this.formatPrice(ticker.price);
-        if (changeEl) {
-            changeEl.textContent = this.formatChange(ticker.change) + '%';
-            changeEl.className = `ticker-change ${ticker.change > 0 ? 'positive' : ticker.change < 0 ? 'negative' : ''}`;
+        // ИСПРАВЛЕНИЕ 3: Пакетная вставка. 
+        // Браузер применит все 30 элементов за 1 такт (1 repaint), полностью исключая мерцание
+        if (fragment.hasChildNodes()) {
+            itemsContainer.appendChild(fragment);
         }
-        if (volumeEl) volumeEl.textContent = this.formatVolume(ticker.volume);
         
-        if (!el.parentNode) {
-            itemsContainer.appendChild(el);
+        // СКРЫВАЕМ невидимые элементы (НЕ УДАЛЯЕМ!)
+        for (const [key, el] of this.tickerElements.entries()) {
+            if (!visibleKeys.has(key)) {
+                el.style.display = 'none'; // СКРЫВАЕМ вместо удаления
+            }
         }
     }
-    
-    // СКРЫВАЕМ невидимые элементы (НЕ УДАЛЯЕМ!)
-    for (const [key, el] of this.tickerElements.entries()) {
-        if (!visibleKeys.has(key)) {
-            el.style.display = 'none'; // СКРЫВАЕМ вместо удаления
-        }
-    }
-}
-    
      createTickerElement(ticker, index) {
         const div = document.createElement('div');
         div.className = `ticker-item ${ticker.symbol === this.parent.state.currentSymbol && 
