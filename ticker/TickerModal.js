@@ -406,7 +406,7 @@ class TickerModal {
                     this.parent.updateModalCount();
                     this.updateModalResults(true);
                     this.parent.filterCache = null;
-                    this.parent.renderTickerList();
+                    
                     if (e.shiftKey) {
                         document.getElementById('addInstrumentModal').classList.remove('show');
                     }
