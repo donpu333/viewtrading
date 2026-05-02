@@ -126,19 +126,10 @@ class WatchlistManager {
         await this._saveToDB(data);
     }
 
-    async syncActiveListFromPanel() {
+       async syncActiveListFromPanel() {
         await this._initPromise;
-        const list = this.lists.get(this.activeListId);
-        if (!list) return;
-        const panelSymbols = this.tickerPanel.state.customSymbols;
-        if (JSON.stringify(list.symbols) !== JSON.stringify(panelSymbols)) {
-            list.symbols = [...panelSymbols];
-            this.renderCache.delete(this.activeListId);
-            await this._saveNow();
-            this.renderDropdown();
-        }
+        return;
     }
-
     async createList(name) {
         await this._initPromise;
         const id = `wl_${Date.now()}`;
