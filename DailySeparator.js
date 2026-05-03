@@ -4,15 +4,7 @@ class DailySeparator {
         this._primitive = null;
         this._requestUpdate = null;
         
-        // Проверка на Mac с Retina — отключаем полностью
-        const isMac = /Macintosh/.test(navigator.userAgent);
-        const isRetina = window.devicePixelRatio > 1;
-        this._disabled = isMac && isRetina;
-        
-        if (this._disabled) {
-            console.log('🔕 DailySeparator отключён на Mac с Retina');
-            return;
-        }
+        // УДАЛЕНО: Проверка на Mac с Retina. Теперь код оптимизирован и работает везде.
         
         // Загружаем настройки
         const saved = localStorage.getItem('separatorSettings');
@@ -35,7 +27,7 @@ class DailySeparator {
     }
     
     _attach() {
-        if (this._disabled) return;
+        // Убрал проверку this._disabled
         if (!this._cm || !this._cm.chart) {
             setTimeout(() => this._attach(), 500);
             return;
@@ -70,7 +62,6 @@ class DailySeparator {
     }
     
     _draw(target) {
-        if (this._disabled) return;
         if (!this._enabled) return;
         
         const tf = this._cm.currentInterval;
@@ -79,35 +70,58 @@ class DailySeparator {
         const data = this._cm.chartData;
         if (!data || data.length < 2) return;
         
+        const timeScale = this._cm.chart.timeScale();
+        const visibleRange = timeScale.getVisibleLogicalRange();
+        if (!visibleRange) return;
+
+        // === ГЛАВНАЯ ОПТИМИЗАЦИЯ: Рисуем ТОЛЬКО то, что видно на экране ===
+        const fromIdx = Math.max(0, Math.floor(visibleRange.from) - 1);
+        const toIdx = Math.min(data.length - 1, Math.ceil(visibleRange.to) + 1);
+        // =================================================================
+        
         target.useBitmapCoordinateSpace(scope => {
             const ctx = scope.context;
+            const hpr = scope.horizontalPixelRatio; // Коэффициент Mac Retina (обычно 2)
+            const vpr = scope.verticalPixelRatio;
+            
+            // ПРАВИЛЬНЫЕ РАЗМЕРЫ CANVAS В ФИЗИЧЕСКИХ ПИКСЕЛЯХ
+            const canvasWidth = scope.mediaSize.width * hpr;
+            const canvasHeight = scope.mediaSize.height * vpr;
+            
             let prevDay = null;
             
-            data.forEach(candle => {
+            // Перебираем только видимые свечи (вместо всех 1000)
+            for (let i = fromIdx; i <= toIdx; i++) {
+                const candle = data[i];
                 const mskTime = new Date(candle.time * 1000);
                 const day = mskTime.getUTCDate();
+                
                 if (prevDay !== null && day !== prevDay) {
-                    const timeScale = this._cm.chart.timeScale();
-                    const x = timeScale.timeToCoordinate(candle.time);
+                    let x = timeScale.timeToCoordinate(candle.time);
                     
-                    if (x !== null && x > 0 && x < scope.mediaSize.width) {
-                        ctx.save();
-                        ctx.strokeStyle = this._hexToRgba(this._color, this._opacity);
-                        ctx.lineWidth = this._lineWidth * scope.horizontalPixelRatio;
+                    if (x !== null) {
+                        x *= hpr; // ПЕРЕВОД X В ФИЗИЧЕСКИЕ ПИКСЕЛИ (Фикс для Mac)
                         
-                        if (this._lineStyle === 'dashed') ctx.setLineDash([4, 4]);
-                        else if (this._lineStyle === 'dotted') ctx.setLineDash([2, 2]);
-                        else ctx.setLineDash([]);
-                        
-                        ctx.beginPath();
-                        ctx.moveTo(x, 0);
-                        ctx.lineTo(x, scope.mediaSize.height);
-                        ctx.stroke();
-                        ctx.restore();
+                        if (x > 0 && x < canvasWidth) {
+                            ctx.save();
+                            ctx.strokeStyle = this._hexToRgba(this._color, this._opacity);
+                            ctx.lineWidth = this._lineWidth * hpr; // Толщина тоже в физ. пикселях
+                            
+                            // Пунктир нужно масштабировать под Mac, иначе он будет сливаться в сплошную линию
+                            if (this._lineStyle === 'dashed') ctx.setLineDash([4 * hpr, 4 * hpr]);
+                            else if (this._lineStyle === 'dotted') ctx.setLineDash([2 * hpr, 2 * hpr]);
+                            else ctx.setLineDash([]);
+                            
+                            ctx.beginPath();
+                            ctx.moveTo(x, 0);
+                            ctx.lineTo(x, canvasHeight); // ТЕПЕРЬ ЛИНИЯ ИДЕТ ДО САМОГО НИЗА
+                            ctx.stroke();
+                            ctx.restore();
+                        }
                     }
                 }
                 prevDay = day;
-            });
+            }
         });
     }
     
@@ -119,7 +133,7 @@ class DailySeparator {
     }
     
     updateSettings(settings) {
-        if (this._disabled) return;
+        // Убрал проверку this._disabled
         if (settings.enabled !== undefined) this._enabled = settings.enabled;
         if (settings.color) this._color = settings.color;
         if (settings.style) this._lineStyle = settings.style;
@@ -140,7 +154,7 @@ class DailySeparator {
     }
     
     redraw() {
-        if (this._disabled) return;
+        // Убрал проверку this._disabled
         if (this._primitive && this._primitive.requestRedraw) {
             this._primitive.requestRedraw();
         }
