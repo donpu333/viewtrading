@@ -17,13 +17,22 @@ class TimerRenderer {
             const timerText = this._timerManager._timerElement?.textContent || '';
             if (!timerText) return;
             
-            const fontSize = 11;
+            // === ПРАВИЛЬНАЯ МАТЕМАТИКА ДЛЯ RETINA (MAC) ===
+            const hpr = scope.horizontalPixelRatio; 
+            const vpr = scope.verticalPixelRatio;
+            
+            const fontSize = 11 * vpr; // Увеличиваем шрифт для четкости Mac
             ctx.font = `bold ${fontSize}px 'Inter', Arial, sans-serif`;
-            const textWidth = ctx.measureText(timerText).width;
-            const padding = 8 * scope.horizontalPixelRatio;
+            const textWidth = ctx.measureText(timerText).width; 
+            
+            const padding = 8 * hpr;
             const rectWidth = textWidth + padding * 2;
-            const rectHeight = (fontSize + 8) * scope.verticalPixelRatio;
-            const rectX = scope.mediaSize.width - rectWidth - 5 * scope.horizontalPixelRatio;
+            const rectHeight = fontSize + 8 * vpr;
+            
+            // Ширина canvas в ФИЗИЧЕСКИХ пикселях
+            const canvasWidth = scope.mediaSize.width * hpr; 
+            const rectX = canvasWidth - rectWidth - 5 * hpr; // ПРИЖАТ К ПРАВОМУ КРАЮ!
+            // ================================================
             
             let price = chartManager.currentRealPrice;
             if (!price || isNaN(price) || price <= 0) {
@@ -41,12 +50,13 @@ class TimerRenderer {
 
             let rawYCoord = activeSeries.priceToCoordinate(price);
 
-            // ИСПРАВЛЕНИЕ: Если цена за экраном - просто выходим. БЕЗ requestRedraw!
+            // ИСПРАВЛЕНИЕ: Не даём уйти в бесконечный цикл
             if (rawYCoord === null || isNaN(rawYCoord)) {
                 return; 
             }
             
-            let rectY = (rawYCoord * scope.verticalPixelRatio) - rectHeight / 2;
+            // Правильно переводим логическую высоту цены в физическую
+            let rectY = (rawYCoord * vpr) - rectHeight / 2;
             
             const lastCandle = chartManager.getLastCandle();
             const isBullish = lastCandle ? lastCandle.close > lastCandle.open : true;
@@ -57,14 +67,13 @@ class TimerRenderer {
             ctx.save();
             ctx.fillStyle = bgColor;
             ctx.shadowColor = 'rgba(0,0,0,0.5)';
-            ctx.shadowBlur = 4 * scope.horizontalPixelRatio;
+            ctx.shadowBlur = 4 * hpr;
             ctx.beginPath();
-            this._roundRect(ctx, rectX, rectY, rectWidth, rectHeight, 4 * scope.horizontalPixelRatio);
+            this._roundRect(ctx, rectX, rectY, rectWidth, rectHeight, 4 * hpr);
             ctx.fill();
             
             ctx.shadowBlur = 0;
             ctx.fillStyle = '#FFFFFF';
-            ctx.font = `bold ${fontSize}px 'Inter', Arial, sans-serif`;
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
             ctx.fillText(timerText, rectX + rectWidth / 2, rectY + rectHeight / 2);
@@ -154,22 +163,14 @@ class TimerManager {
         this._primitive = null;
         this._timerElement = { textContent: '' };
         
-        // Проверка на Mac с Retina
-        const isMac = /Macintosh/.test(navigator.userAgent);
-        const isRetina = window.devicePixelRatio > 1;
-        this._disabled = isMac && isRetina;
-        
-        if (this._disabled) {
-            console.log('🔕 Таймер отключён на Mac с Retina');
-            return;
-        }
+        // ЗАГЛУШКА MAC ПОЛНОСТЬЮ УДАЛЕНА. Теперь он работает везде.
         
         chartManager.timerManager = this;
         setTimeout(() => this._createPrimitive(), 500);
     }
 
     _createPrimitive() {
-        if (this._disabled) return;
+        // Проверка this._disabled удалена
         if (!this._chartManager || !this._chartManager.chart) return;
         
         this._primitive = new TimerPrimitive(this, this._chartManager);
@@ -204,8 +205,7 @@ class TimerManager {
     }
 
     start(interval) {
-        if (this._disabled) return;
-        
+        // Проверка this._disabled удалена
         this._currentTf = interval;
         
         if (this._isDayTimeframe(interval)) {
@@ -221,8 +221,7 @@ class TimerManager {
     }
 
     _updateTimer() {
-        if (this._disabled) return;
-        
+        // Проверка this._disabled удалена
         if (this._isDayTimeframe(this._currentTf)) {
             this._timerElement.textContent = '';
             if (this._primitive) this._primitive.setEnabled(false);
@@ -258,7 +257,7 @@ class TimerManager {
     }
     
     reattach() {
-        if (this._disabled) return;
+        // Проверка this._disabled удалена
         if (!this._primitive) return;
         
         const wasEnabled = this._primitive.isEnabled();
